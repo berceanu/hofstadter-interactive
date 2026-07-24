@@ -4,12 +4,12 @@
   "python": "3.14.6",
   "workload": "square q=97 butterfly",
   "points": 9312,
-  "native_seconds": 2.6737,
-  "first_meaningful_render_seconds": 0.014,
-  "browser_compute_seconds": 6.56,
-  "browser_runtime_and_compute_seconds": 9.753,
+  "native_seconds": 2.6874,
+  "first_meaningful_render_seconds": 0.066,
+  "browser_compute_seconds": 6.04,
+  "browser_runtime_and_compute_seconds": 8.818,
   "browser": "Headless Chrome 149.0.7827.55 (Apple M-series laptop)",
   "browser_target_seconds": 10,
   "target_met": true,
-  "note": "Browser compute time excludes the one-time local Pyodide/NumPy initialization; the combined cold load and computation also completed under 10 seconds on this machine."
+  "note": "Fresh Phase 2 stretch-goal run on the same Apple M-series machine class. Browser compute excludes one-time Pyodide/NumPy initialization; the opt-in torus, NPZ loader, alternate palettes, and custom-lattice editor add no work to the default q=97 sweep path. First streamed render stayed below 1 s and both the q=97 sweep and combined cold runtime plus sweep stayed below 10 s."
 }

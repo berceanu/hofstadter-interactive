@@ -1,11 +1,13 @@
-import { zipSync } from "fflate";
 import type {
   BandResult,
+  ButterflyColorMode,
+  GeometryResult,
   LatticeResult,
   ScientificParameters,
   ViewKind,
 } from "../compute/contracts";
 import type { ButterflyArrays } from "./arrays";
+import { createNpzArchive, type NpyArray } from "./npz";
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -18,7 +20,7 @@ function download(blob: Blob, filename: string) {
 
 export function exportFilename(
   parameters: ScientificParameters,
-  view: ViewKind,
+  view: ViewKind | "workspace",
   extension: string,
 ) {
   const flux = view === "butterfly" || view === "wannier"
@@ -33,6 +35,7 @@ export function exportCsv(
   butterfly?: ButterflyArrays,
   bands?: BandResult,
   lattice?: LatticeResult,
+  geometry?: GeometryResult,
 ) {
   const rows: string[] = [];
   if ((view === "butterfly" || view === "wannier") && butterfly) {
@@ -67,6 +70,68 @@ export function exportCsv(
       }
     }
   } else if (view === "bands" && bands) {
+    rows.push("band_properties");
+    const includeGeometry =
+      geometry?.samples === bands.samples && geometry.bands === bands.bands;
+    const geometryByBand = new Map(
+      includeGeometry
+        ? geometry.rows.map((row) => [row.band, row] as const)
+        : [],
+    );
+    rows.push(
+      [
+        "band",
+        "band_end",
+        "group",
+        "isolated",
+        "width",
+        "gap",
+        "gap_width",
+        "std_B",
+        "C",
+        "bgt",
+        ...(includeGeometry
+          ? [
+              "std_g",
+              "av_gxx",
+              "std_gxx",
+              "av_gxy",
+              "std_gxy",
+              "T",
+              "D",
+            ]
+          : []),
+      ].join(","),
+    );
+    for (const row of [...bands.groupRows].reverse()) {
+      const geometryRow = geometryByBand.get(row.band);
+      rows.push(
+        [
+          row.band,
+          row.bandEnd,
+          row.group,
+          row.isolated,
+          row.width,
+          row.gap ?? "",
+          row.gapWidth ?? "",
+          row.stdB,
+          row.chern,
+          bands.bgt,
+          ...(geometryRow
+            ? [
+                geometryRow.stdG,
+                geometryRow.averageGxx,
+                geometryRow.stdGxx,
+                geometryRow.averageGxy,
+                geometryRow.stdGxy,
+                geometryRow.averageT,
+                geometryRow.averageD,
+              ]
+            : []),
+        ].join(","),
+      );
+    }
+    rows.push("", "surface_data");
     rows.push(
       "band,k1_index,k2_index,energy,berry_flux,chern,group_start,group_size",
     );
@@ -111,78 +176,75 @@ export function exportCsv(
   );
 }
 
-function npy(array: Float64Array | Int32Array) {
-  const descriptor = array instanceof Float64Array ? "<f8" : "<i4";
-  const shape = `(${array.length},)`;
-  const dictionary = `{'descr': '${descriptor}', 'fortran_order': False, 'shape': ${shape}, }`;
-  const prefixLength = 10;
-  const padding = (16 - ((prefixLength + dictionary.length + 1) % 16)) % 16;
-  const header = new TextEncoder().encode(
-    `${dictionary}${" ".repeat(padding)}\n`,
-  );
-  const output = new Uint8Array(prefixLength + header.length + array.byteLength);
-  output.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 0x01, 0x00], 0);
-  output[8] = header.length & 0xff;
-  output[9] = (header.length >> 8) & 0xff;
-  output.set(header, prefixLength);
-  output.set(
-    new Uint8Array(array.buffer, array.byteOffset, array.byteLength),
-    prefixLength + header.length,
-  );
-  return output;
-}
-
 export function exportNpz(
   parameters: ScientificParameters,
   view: ViewKind,
   butterfly?: ButterflyArrays,
   bands?: BandResult,
   lattice?: LatticeResult,
+  geometry?: GeometryResult,
 ) {
-  const files: Record<string, Uint8Array> = {};
+  const files: Record<string, NpyArray> = {};
   if ((view === "butterfly" || view === "wannier") && butterfly) {
     Object.assign(files, {
-      flux: npy(view === "wannier" ? butterfly.gapFlux : butterfly.flux),
-      energy: npy(view === "wannier" ? butterfly.gapEnergy : butterfly.energy),
-      band: npy(butterfly.band),
-      chern: npy(view === "wannier" ? butterfly.gapChern : butterfly.chern),
-      integrated_dos: npy(butterfly.dos),
-      gap: npy(butterfly.gap),
-      topology_available: npy(
-        new Int32Array([butterfly.topologyAvailable ? 1 : 0]),
-      ),
+      flux: view === "wannier" ? butterfly.gapFlux : butterfly.flux,
+      energy: view === "wannier" ? butterfly.gapEnergy : butterfly.energy,
+      band: butterfly.band,
+      chern: view === "wannier" ? butterfly.gapChern : butterfly.chern,
+      integrated_dos: butterfly.dos,
+      gap: butterfly.gap,
+      state_flux: butterfly.flux,
+      state_energy: butterfly.energy,
+      state_band: butterfly.band,
+      state_chern: butterfly.chern,
+      gap_flux: butterfly.gapFlux,
+      gap_energy: butterfly.gapEnergy,
+      gap_chern: butterfly.gapChern,
+      topology_available: new Int32Array([
+        butterfly.topologyAvailable ? 1 : 0,
+      ]),
     });
   } else if (view === "bands" && bands) {
     Object.assign(files, {
-      energy: npy(bands.energy),
-      berry_flux: npy(bands.berry),
-      chern: npy(bands.chern),
-      group_start: npy(bands.groupStart),
-      group_size: npy(bands.groupSize),
-      path_x: npy(bands.pathX),
-      path_k1: npy(bands.pathK1),
-      path_k2: npy(bands.pathK2),
-      path_energy: npy(bands.pathEnergy),
+      energy: bands.energy,
+      berry_flux: bands.berry,
+      wilson_phase: bands.wilson,
+      chern: bands.chern,
+      group_start: bands.groupStart,
+      group_size: bands.groupSize,
+      path_x: bands.pathX,
+      path_k1: bands.pathK1,
+      path_k2: bands.pathK2,
+      path_energy: bands.pathEnergy,
+      magnetic_brillouin_zone: bands.bz,
+      ordinary_brillouin_zone: bands.ordinaryBz,
     });
+    if (
+      geometry?.samples === bands.samples
+      && geometry.bands === bands.bands
+    ) {
+      Object.assign(files, {
+        quantum_metric_gxx: geometry.gxx,
+        quantum_metric_gxy: geometry.gxy,
+      });
+    }
   } else if (view === "lattice" && lattice) {
     Object.assign(files, {
-      sites: npy(lattice.sites),
-      site_basis: npy(lattice.siteBasis),
-      links: npy(lattice.links),
-      unit_cell: npy(lattice.unitCell),
-      magnetic_brillouin_zone: npy(lattice.bz),
-      ordinary_brillouin_zone: npy(lattice.ordinaryBz),
+      sites: lattice.sites,
+      site_basis: lattice.siteBasis,
+      links: lattice.links,
+      unit_cell: lattice.unitCell,
+      magnetic_brillouin_zone: lattice.bz,
+      ordinary_brillouin_zone: lattice.ordinaryBz,
     });
   } else {
     return;
   }
-  const archive = zipSync(
-    Object.fromEntries(
-      Object.entries(files).map(([name, bytes]) => [`${name}.npy`, bytes]),
-    ),
-    { level: 6 },
-  );
-  const archiveBytes = Uint8Array.from(archive);
+  const archiveBytes = createNpzArchive(files, {
+    schema: "hofstadter-interactive/1",
+    view,
+    parameters,
+  });
   download(
     new Blob([archiveBytes.buffer], { type: "application/octet-stream" }),
     exportFilename(parameters, view, "npz"),
@@ -213,18 +275,27 @@ function imageFromSvg(svg: SVGSVGElement) {
 export async function exportPng(
   root: HTMLElement,
   parameters: ScientificParameters,
-  view: ViewKind,
+  view: ViewKind | "workspace",
+  options: {
+    scale?: number;
+    transparent?: boolean;
+    art?: boolean;
+    filename?: string;
+  } = {},
 ) {
   const rect = root.getBoundingClientRect();
-  const scale = Math.min(2, window.devicePixelRatio || 1);
+  const scale =
+    options.scale ?? Math.min(2, window.devicePixelRatio || 1);
   const output = document.createElement("canvas");
   output.width = Math.round(rect.width * scale);
   output.height = Math.round(rect.height * scale);
   const context = output.getContext("2d");
   if (!context) return;
   context.scale(scale, scale);
-  context.fillStyle = "#08111d";
-  context.fillRect(0, 0, rect.width, rect.height);
+  if (!options.transparent) {
+    context.fillStyle = "#08111d";
+    context.fillRect(0, 0, rect.width, rect.height);
+  }
 
   root.querySelectorAll("canvas").forEach((canvas) => {
     const child = canvas.getBoundingClientRect();
@@ -237,6 +308,7 @@ export async function exportPng(
     );
   });
   for (const svg of root.querySelectorAll<SVGSVGElement>("svg[data-export-layer]")) {
+    if (options.art) continue;
     const child = svg.getBoundingClientRect();
     const image = await imageFromSvg(svg);
     context.drawImage(
@@ -248,6 +320,42 @@ export async function exportPng(
     );
   }
   output.toBlob((blob) => {
-    if (blob) download(blob, exportFilename(parameters, view, "png"));
+    if (blob) {
+      download(
+        blob,
+        options.filename ?? exportFilename(parameters, view, "png"),
+      );
+    }
   }, "image/png");
+}
+
+export function exportArtPng(
+  plot: HTMLElement,
+  parameters: ScientificParameters,
+  view: "butterfly" | "wannier",
+  colorMode: ButterflyColorMode,
+  transparent: boolean,
+) {
+  const upstreamMode =
+    view === "wannier"
+      ? "chern"
+      : colorMode === "gaps"
+        ? "plane"
+        : colorMode === "chern"
+          ? "point"
+          : "spectral";
+  const filename = [
+    view,
+    parameters.lattice,
+    "q",
+    parameters.q,
+    upstreamMode,
+    "art.png",
+  ].join("_");
+  return exportPng(plot, parameters, view, {
+    art: true,
+    filename,
+    scale: 3,
+    transparent,
+  });
 }

@@ -3,6 +3,7 @@ import type {
   BandResult,
   ButterflyChunk,
   ComputeEngine,
+  GeometryResult,
   LatticeResult,
   RuntimeProgress,
   ScientificParameters,
@@ -178,6 +179,29 @@ export class PyodideWorkerEngine implements ComputeEngine {
     try {
       const result = await this.withRecovery(() =>
         this.remote.computeLattice(requestId, parameters),
+      );
+      if (this.cancelled.has(requestId)) throw new Error("cancelled");
+      return result;
+    } finally {
+      this.cancelled.delete(requestId);
+      try {
+        await this.remote.clearCancellation(requestId);
+      } catch {
+        // A failed worker will be recreated by the next computation.
+      }
+    }
+  }
+
+  async computeGeometry(
+    requestId: string,
+    parameters: ScientificParameters,
+  ): Promise<GeometryResult> {
+    await this.ensureReady();
+    this.cancelled.delete(requestId);
+    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    try {
+      const result = await this.withRecovery(() =>
+        this.remote.computeGeometry(requestId, parameters),
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;

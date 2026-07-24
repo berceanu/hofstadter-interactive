@@ -5,6 +5,7 @@ import { loadPyodide, type PyodideInterface } from "pyodide";
 import type {
   BandResult,
   ButterflyChunk,
+  GeometryResult,
   LatticeResult,
   RuntimeProgress,
   ScientificParameters,
@@ -30,9 +31,13 @@ interface PythonBands {
   bands: number;
   energy: Float64Array;
   berry: Float64Array;
+  wilson: Float64Array;
   chern: Int32Array;
   group_start: Int32Array;
   group_size: Int32Array;
+  property_rows: PythonPropertyRow[];
+  group_rows: PythonGroupRow[];
+  bgt: number;
   path_x: Float64Array;
   path_k1: Float64Array;
   path_k2: Float64Array;
@@ -40,6 +45,54 @@ interface PythonBands {
   path_ticks: Float64Array;
   path_labels: string[];
   reciprocal: Float64Array;
+  sym_points: PythonSymmetryPoint[];
+  bz: Float64Array;
+  ordinary_bz: Float64Array;
+}
+
+interface PythonGeometryRow {
+  band: number;
+  band_end: number;
+  group: number;
+  std_g: number;
+  av_gxx: number;
+  std_gxx: number;
+  av_gxy: number;
+  std_gxy: number;
+  T: number;
+  D: number;
+}
+
+interface PythonGeometry {
+  samples: number;
+  bands: number;
+  gxx: Float64Array;
+  gxy: Float64Array;
+  group_start: Int32Array;
+  group_size: Int32Array;
+  rows: PythonGeometryRow[];
+  bgt: number;
+}
+
+interface PythonSymmetryPoint {
+  label: string;
+  k1: number;
+  k2: number;
+}
+
+interface PythonPropertyRow {
+  band: number;
+  group: number;
+  isolated: boolean;
+  width: number;
+  gap: number | null;
+  gap_width: number | null;
+  std_B: number;
+  C: number;
+}
+
+interface PythonGroupRow extends PythonPropertyRow {
+  band_end: number;
 }
 
 interface PythonLattice {
@@ -53,6 +106,7 @@ interface PythonLattice {
   ordinary_reciprocal_vectors: Float64Array;
   bz: Float64Array;
   ordinary_bz: Float64Array;
+  sym_points: PythonSymmetryPoint[];
   basis_count: number;
 }
 
@@ -141,7 +195,7 @@ await micropip.install(_hh_wheel_url, deps=False)
       }
       await runtime.runPythonAsync(`
 import json
-from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
+from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_lattice
 `);
       onProgress({
         phase: "ready",
@@ -210,9 +264,32 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       bands: Number(result.bands),
       energy: new Float64Array(result.energy),
       berry: new Float64Array(result.berry),
+      wilson: new Float64Array(result.wilson),
       chern: new Int32Array(result.chern),
       groupStart: new Int32Array(result.group_start),
       groupSize: new Int32Array(result.group_size),
+      propertyRows: Array.from(result.property_rows, (row) => ({
+        band: Number(row.band),
+        group: Number(row.group),
+        isolated: Boolean(row.isolated),
+        width: Number(row.width),
+        gap: row.gap === null ? null : Number(row.gap),
+        gapWidth: row.gap_width === null ? null : Number(row.gap_width),
+        stdB: Number(row.std_B),
+        chern: Number(row.C),
+      })),
+      groupRows: Array.from(result.group_rows, (row) => ({
+        band: Number(row.band),
+        bandEnd: Number(row.band_end),
+        group: Number(row.group),
+        isolated: Boolean(row.isolated),
+        width: Number(row.width),
+        gap: row.gap === null ? null : Number(row.gap),
+        gapWidth: row.gap_width === null ? null : Number(row.gap_width),
+        stdB: Number(row.std_B),
+        chern: Number(row.C),
+      })),
+      bgt: Number(result.bgt),
       pathX: new Float64Array(result.path_x),
       pathK1: new Float64Array(result.path_k1),
       pathK2: new Float64Array(result.path_k2),
@@ -220,11 +297,19 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       pathTicks: new Float64Array(result.path_ticks),
       pathLabels: Array.from(result.path_labels),
       reciprocal: new Float64Array(result.reciprocal),
+      symPoints: Array.from(result.sym_points, (point) => ({
+        label: String(point.label),
+        k1: Number(point.k1),
+        k2: Number(point.k2),
+      })),
+      bz: new Float64Array(result.bz),
+      ordinaryBz: new Float64Array(result.ordinary_bz),
       elapsedMs: performance.now() - started,
     };
     return transfer(bands, [
       bands.energy.buffer,
       bands.berry.buffer,
+      bands.wilson.buffer,
       bands.chern.buffer,
       bands.groupStart.buffer,
       bands.groupSize.buffer,
@@ -234,6 +319,8 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       bands.pathEnergy.buffer,
       bands.pathTicks.buffer,
       bands.reciprocal.buffer,
+      bands.bz.buffer,
+      bands.ordinaryBz.buffer,
     ]);
   },
 
@@ -259,6 +346,11 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       ),
       bz: new Float64Array(result.bz),
       ordinaryBz: new Float64Array(result.ordinary_bz),
+      symPoints: Array.from(result.sym_points, (point) => ({
+        label: String(point.label),
+        k1: Number(point.k1),
+        k2: Number(point.k2),
+      })),
       basisCount: Number(result.basis_count),
     };
     return transfer(lattice, [
@@ -272,6 +364,46 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       lattice.ordinaryReciprocalVectors.buffer,
       lattice.bz.buffer,
       lattice.ordinaryBz.buffer,
+    ]);
+  },
+
+  async computeGeometry(
+    requestId: string,
+    parameters: ScientificParameters,
+  ): Promise<GeometryResult> {
+    if (cancelled.has(requestId)) {
+      throw new Error("cancelled");
+    }
+    const started = performance.now();
+    const result = runAdapter<PythonGeometry>("compute_geometry", parameters);
+    const geometry: GeometryResult = {
+      requestId,
+      samples: Number(result.samples),
+      bands: Number(result.bands),
+      gxx: new Float64Array(result.gxx),
+      gxy: new Float64Array(result.gxy),
+      groupStart: new Int32Array(result.group_start),
+      groupSize: new Int32Array(result.group_size),
+      rows: Array.from(result.rows, (row) => ({
+        band: Number(row.band),
+        bandEnd: Number(row.band_end),
+        group: Number(row.group),
+        stdG: Number(row.std_g),
+        averageGxx: Number(row.av_gxx),
+        stdGxx: Number(row.std_gxx),
+        averageGxy: Number(row.av_gxy),
+        stdGxy: Number(row.std_gxy),
+        averageT: Number(row.T),
+        averageD: Number(row.D),
+      })),
+      bgt: Number(result.bgt),
+      elapsedMs: performance.now() - started,
+    };
+    return transfer(geometry, [
+      geometry.gxx.buffer,
+      geometry.gxy.buffer,
+      geometry.groupStart.buffer,
+      geometry.groupSize.buffer,
     ]);
   },
 

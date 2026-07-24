@@ -18,17 +18,125 @@ from HT.functions import models as model_functions
 from HT.models.hofstadter import Hofstadter
 
 
+_geometry_base_cache: dict[str, Any] | None = None
+_GEOMETRY_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
+
+
+def _normalized_custom_basis(parameters: dict[str, Any]) -> np.ndarray:
+    """Return a small, unique fractional basis for the custom-lattice path."""
+
+    raw_basis = parameters.get(
+        "customBasis",
+        parameters.get("custom_basis", [[0.0, 0.0], [0.5, 0.0], [0.0, 0.5]]),
+    )
+    basis: list[tuple[float, float]] = []
+    for raw_point in list(raw_basis)[:4]:
+        if not isinstance(raw_point, (list, tuple)) or len(raw_point) != 2:
+            continue
+        x, y = float(raw_point[0]), float(raw_point[1])
+        if not np.isfinite(x) or not np.isfinite(y):
+            continue
+        point = (
+            float(np.clip(x, 0.0, 0.999999)),
+            float(np.clip(y, 0.0, 0.999999)),
+        )
+        if not any(
+            abs(point[0] - existing[0]) < 1e-8
+            and abs(point[1] - existing[1]) < 1e-8
+            for existing in basis
+        ):
+            basis.append(point)
+    if not basis:
+        basis = [(0.0, 0.0), (0.5, 0.0), (0.0, 0.5)]
+    return np.asarray(basis, dtype=np.float64)
+
+
+class _CustomHofstadter(Hofstadter):
+    """Adapter-only custom unit cell using the upstream generic Hamiltonian."""
+
+    def __init__(self, *args: Any, custom_basis: np.ndarray, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.custom_basis = np.asarray(custom_basis, dtype=np.float64)
+
+    def unit_cell(self):
+        a1 = self.a0 * np.array([1.0, 0.0])
+        a2 = self.a0 * self.alpha * np.array(
+            [np.cos(self.theta), np.sin(self.theta)]
+        )
+        lattice_vectors = np.vstack((a1, a2))
+        basis = np.asarray(
+            [
+                point[0] * a1 + point[1] * a2
+                for point in self.custom_basis
+            ],
+            dtype=np.float64,
+        )
+        magnetic_vectors = np.vstack((a1, self.q * a2))
+        reciprocal = model_functions.reciprocal_vectors(magnetic_vectors)
+        gamma = np.array([0.0, 0.0])
+        middle = np.array([0.5, 0.5])
+        theta_gcd = gcd(self.theta0, self.theta1)
+        reduced_denominator = self.theta1 // theta_gcd
+        if reduced_denominator == 3:
+            symmetry_points = [
+                ("$\\Gamma$", gamma),
+                ("$K$", np.array([2 / 3, 1 / 3])),
+                ("$M$", middle),
+                ("$K'$", np.array([1 / 3, 2 / 3])),
+            ]
+        else:
+            symmetry_points = [
+                ("$\\Gamma$", gamma),
+                ("$X$", np.array([0.5, 0.0])),
+                ("$M$", middle),
+                ("$Y$", np.array([0.0, 0.5])),
+            ]
+        return (
+            len(basis) * self.q,
+            lattice_vectors,
+            basis,
+            reciprocal,
+            symmetry_points,
+        )
+
+
+def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
+    theta = parameters.get("theta", [1, 3])
+    return (
+        str(parameters.get("lattice", "square")),
+        int(parameters.get("p", 1)),
+        int(parameters.get("q", 31)),
+        float(parameters.get("a", 1.0)),
+        tuple(float(value) for value in parameters.get("hoppings", [1.0])),
+        float(parameters.get("alpha", 1.0)),
+        (int(theta[0]), int(theta[1])),
+        int(parameters.get("period", 1)),
+        tuple(_normalized_custom_basis(parameters).ravel())
+        if str(parameters.get("lattice", "square")) == "custom"
+        else (),
+        int(samples),
+    )
+
+
 def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
     theta = parameters.get("theta", [1, 3])
-    return Hofstadter(
+    lattice = str(parameters.get("lattice", "square"))
+    model_type = _CustomHofstadter if lattice == "custom" else Hofstadter
+    custom_arguments = (
+        {"custom_basis": _normalized_custom_basis(parameters)}
+        if lattice == "custom"
+        else {}
+    )
+    return model_type(
         int(parameters.get("p", 1) if p is None else p),
         int(parameters.get("q", 31)),
         a0=float(parameters.get("a", 1.0)),
         t=[float(value) for value in parameters.get("hoppings", [1.0])],
-        lat=str(parameters.get("lattice", "square")),
+        lat=lattice,
         alpha=float(parameters.get("alpha", 1.0)),
         theta=(int(theta[0]), int(theta[1])),
         period=int(parameters.get("period", 1)),
+        **custom_arguments,
     )
 
 
@@ -38,7 +146,11 @@ def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
     base, _ = butterfly_functions.chern(model.p, model.q)
     if band_count == model.q:
         return np.asarray(base, dtype=np.int32), True
-    if band_count == 2 * model.q and len(model.t) == 1:
+    if (
+        band_count == 2 * model.q
+        and len(model.t) == 1
+        and model.lat == "honeycomb"
+    ):
         return np.asarray(base + list(reversed(base)), dtype=np.int32), True
     return np.zeros(band_count, dtype=np.int32), False
 
@@ -195,9 +307,19 @@ def compute_butterfly_batch(
 def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
     """Compute a momentum-grid surface, Berry flux, and a symmetry-line cut."""
 
+    global _geometry_base_cache
     model = _model(parameters)
     samples = max(5, int(parameters.get("samples", 19)))
-    band_count, _, _, reciprocal, symmetry_points = model.unit_cell()
+    band_gap_threshold = float(parameters.get("bgt", 0.01))
+    if not np.isfinite(band_gap_threshold) or band_gap_threshold < 0:
+        band_gap_threshold = 0.01
+    (
+        band_count,
+        lattice_vectors,
+        _,
+        reciprocal,
+        symmetry_points,
+    ) = model.unit_cell()
     values = np.empty((band_count, samples, samples), dtype=np.float64)
     vectors = np.empty(
         (band_count, band_count, samples, samples), dtype=np.complex128
@@ -210,6 +332,15 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
             order = np.argsort(eigvals)
             values[:, ix, iy] = np.real(eigvals[order])
             vectors[:, :, ix, iy] = eigvecs[:, order]
+
+    if values.nbytes + vectors.nbytes <= _GEOMETRY_CACHE_LIMIT_BYTES:
+        _geometry_base_cache = {
+            "key": _band_grid_key(parameters, samples),
+            "values": values,
+            "vectors": vectors,
+        }
+    else:
+        _geometry_base_cache = None
 
     points_per_segment = max(24, samples)
     path_blocks: list[np.ndarray] = []
@@ -245,32 +376,51 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
     path_matrix = np.hstack(path_blocks)
     path_momentum_matrix = np.vstack(path_momenta)
 
-    band_gaps = (
+    cli_adjacent_gaps = (
         np.min(values[1:], axis=(1, 2))
         - np.max(values[:-1], axis=(1, 2))
         if band_count > 1
         else np.empty(0, dtype=np.float64)
     )
+    grouping_gaps = cli_adjacent_gaps.copy()
     if band_count > 1:
-        band_gaps = np.minimum(
-            band_gaps,
+        grouping_gaps = np.minimum(
+            grouping_gaps,
             np.min(path_matrix[1:] - path_matrix[:-1], axis=1),
         )
+    band_gaps = np.full(band_count, np.nan, dtype=np.float64)
+    band_gaps[:-1] = cli_adjacent_gaps
+    isolated = np.ones(band_count, dtype=bool)
+    for band, gap in enumerate(cli_adjacent_gaps):
+        if gap < band_gap_threshold:
+            isolated[band] = False
+            isolated[band + 1] = False
+
     groups: list[tuple[int, int]] = []
     group_start = 0
-    for band, gap in enumerate(band_gaps):
-        if gap > 0.01:
+    for band, gap in enumerate(grouping_gaps):
+        if gap > band_gap_threshold:
             groups.append((group_start, band + 1))
             group_start = band + 1
     groups.append((group_start, band_count))
 
     berry = np.zeros_like(values)
+    wilson = np.zeros((band_count, samples), dtype=np.float64)
     chern_numbers = np.zeros(band_count, dtype=np.int32)
+    std_b_norm = np.zeros(band_count, dtype=np.float64)
     group_starts = np.zeros(band_count, dtype=np.int32)
     group_sizes = np.ones(band_count, dtype=np.int32)
-    for start, end in groups:
+    group_indices = np.zeros(band_count, dtype=np.int32)
+    for group_index, (start, end) in enumerate(groups):
         size = end - start
         group_berry = np.zeros((samples, samples), dtype=np.float64)
+        group_wilson = np.asarray(
+            [
+                band_functions.wilson_loop(vectors, start, iy, size)
+                for iy in range(samples)
+            ],
+            dtype=np.float64,
+        )
         for ix in range(samples - 1):
             for iy in range(samples - 1):
                 group_berry[ix, iy] = band_functions.berry_curv(
@@ -282,25 +432,93 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         group_chern = int(
             np.rint(np.sum(group_berry[:-1, :-1]) / (2 * np.pi))
         )
+        interior_berry = group_berry[:-1, :-1]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            group_std_b = float(
+                np.std(interior_berry) / np.abs(np.average(interior_berry))
+            )
         for band in range(start, end):
             berry[band] = group_berry
+            wilson[band] = group_wilson
             chern_numbers[band] = group_chern
+            std_b_norm[band] = group_std_b
             group_starts[band] = start
             group_sizes[band] = size
+            group_indices[band] = group_index
+
+    band_widths = np.max(values, axis=(1, 2)) - np.min(values, axis=(1, 2))
+
+    def gap_width_ratio(gap: float, width: float) -> float | None:
+        if not np.isfinite(gap):
+            return None
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return float(np.divide(gap, width))
+
+    property_rows = [
+        {
+            "band": int(band),
+            "group": int(group_indices[band]),
+            "isolated": bool(isolated[band]),
+            "width": float(band_widths[band]),
+            "gap": float(band_gaps[band])
+            if np.isfinite(band_gaps[band])
+            else None,
+            "gap_width": gap_width_ratio(
+                float(band_gaps[band]), float(band_widths[band])
+            ),
+            "std_B": float(std_b_norm[band]),
+            "C": int(chern_numbers[band]),
+        }
+        for band in range(band_count - 1, -1, -1)
+    ]
+    group_rows = []
+    for group_index, (start, end) in enumerate(groups):
+        group_width = float(
+            np.max(values[start:end]) - np.min(values[start:end])
+        )
+        group_gap = float(band_gaps[end - 1])
+        group_rows.append(
+            {
+                "band": int(start),
+                "band_end": int(end - 1),
+                "group": int(group_index),
+                "isolated": bool(end - start == 1 and isolated[start]),
+                "width": group_width,
+                "gap": group_gap if np.isfinite(group_gap) else None,
+                "gap_width": gap_width_ratio(group_gap, group_width),
+                "std_B": float(std_b_norm[start]),
+                "C": int(chern_numbers[start]),
+            }
+        )
 
     labels = [
         label.replace("$", "").replace("\\Gamma", "Γ")
         for label, _ in symmetry_points
     ]
+    sym_points = [
+        {
+            "label": label,
+            "k1": float(point[0]),
+            "k2": float(point[1]),
+        }
+        for label, (_, point) in zip(labels, symmetry_points)
+    ]
+    magnetic_bz = _wigner_seitz_cell(reciprocal)
+    ordinary_reciprocal = model_functions.reciprocal_vectors(lattice_vectors)
+    ordinary_bz = _wigner_seitz_cell(ordinary_reciprocal)
     labels.append(labels[0])
     return {
         "samples": samples,
         "bands": band_count,
         "energy": np.ascontiguousarray(values).ravel(),
         "berry": np.ascontiguousarray(berry).ravel(),
+        "wilson": np.ascontiguousarray(wilson).ravel(),
         "chern": chern_numbers,
         "group_start": group_starts,
         "group_size": group_sizes,
+        "property_rows": property_rows,
+        "group_rows": group_rows,
+        "bgt": band_gap_threshold,
         "path_x": np.concatenate(path_coordinates),
         "path_k1": np.ascontiguousarray(path_momentum_matrix[:, 0]),
         "path_k2": np.ascontiguousarray(path_momentum_matrix[:, 1]),
@@ -308,14 +526,212 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "path_ticks": np.asarray(tick_positions, dtype=np.float64),
         "path_labels": labels,
         "reciprocal": np.ascontiguousarray(reciprocal, dtype=np.float64).ravel(),
+        "sym_points": sym_points,
+        "bz": np.ascontiguousarray(magnetic_bz).ravel(),
+        "ordinary_bz": np.ascontiguousarray(ordinary_bz).ravel(),
     }
+
+
+def compute_geometry(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Compute the upstream quantum metric lazily for each band group.
+
+    The finite-difference offsets and the summary statistics intentionally
+    mirror ``HT.band_structure``.  Geometry is kept separate from
+    :func:`compute_bands` because it requires two additional offset
+    eigendiagonalization grids.
+    """
+
+    global _geometry_base_cache
+    model = _model(parameters)
+    samples = max(5, int(parameters.get("samples", 19)))
+    band_gap_threshold = float(parameters.get("bgt", 0.01))
+    if not np.isfinite(band_gap_threshold) or band_gap_threshold < 0:
+        band_gap_threshold = 0.01
+    band_count, _, _, reciprocal, symmetry_points = model.unit_cell()
+    cache_key = _band_grid_key(parameters, samples)
+    cached_base = (
+        _geometry_base_cache
+        if _geometry_base_cache is not None
+        and _geometry_base_cache.get("key") == cache_key
+        else None
+    )
+    if cached_base is None:
+        values = np.empty((band_count, samples, samples), dtype=np.float64)
+        vectors = np.empty(
+            (band_count, band_count, samples, samples), dtype=np.complex128
+        )
+    else:
+        values = cached_base["values"]
+        vectors = cached_base["vectors"]
+    vectors_dkx = np.empty_like(vectors)
+    vectors_dky = np.empty_like(vectors)
+    offset = 1.0 / (1000.0 * (samples - 1))
+
+    for ix, frac_x in enumerate(np.linspace(0.0, 1.0, samples)):
+        frac_x_dkx = (frac_x + offset) % 1.0
+        for iy, frac_y in enumerate(np.linspace(0.0, 1.0, samples)):
+            frac_y_dky = (frac_y + offset) % 1.0
+            momentum_dkx = np.matmul(
+                np.array([frac_x_dkx, frac_y]), reciprocal
+            )
+            momentum_dky = np.matmul(
+                np.array([frac_x, frac_y_dky]), reciprocal
+            )
+            eigvals_dkx, eigvecs_dkx = np.linalg.eigh(
+                model.hamiltonian(momentum_dkx)
+            )
+            eigvals_dky, eigvecs_dky = np.linalg.eigh(
+                model.hamiltonian(momentum_dky)
+            )
+            order_dkx = np.argsort(eigvals_dkx)
+            order_dky = np.argsort(eigvals_dky)
+            if cached_base is None:
+                momentum = np.matmul(
+                    np.array([frac_x, frac_y]), reciprocal
+                )
+                eigvals, eigvecs = np.linalg.eigh(
+                    model.hamiltonian(momentum)
+                )
+                order = np.argsort(eigvals)
+                values[:, ix, iy] = np.real(eigvals[order])
+                vectors[:, :, ix, iy] = eigvecs[:, order]
+            vectors_dkx[:, :, ix, iy] = eigvecs_dkx[:, order_dkx]
+            vectors_dky[:, :, ix, iy] = eigvecs_dky[:, order_dky]
+
+    adjacent_gaps = (
+        np.min(values[1:], axis=(1, 2))
+        - np.max(values[:-1], axis=(1, 2))
+        if band_count > 1
+        else np.empty(0, dtype=np.float64)
+    )
+    grouping_gaps = adjacent_gaps.copy()
+    if band_count > 1:
+        points_per_segment = max(24, samples)
+        path_minima = np.full(band_count - 1, np.inf, dtype=np.float64)
+        for index, (_, start) in enumerate(symmetry_points):
+            end = symmetry_points[(index + 1) % len(symmetry_points)][1]
+            for fraction in np.linspace(
+                0.0, 1.0, points_per_segment, endpoint=False
+            ):
+                fractional_k = start + (end - start) * fraction
+                path_values = np.sort(
+                    np.linalg.eigvalsh(
+                        model.hamiltonian(
+                            np.matmul(fractional_k, reciprocal)
+                        )
+                    )
+                )
+                path_minima = np.minimum(
+                    path_minima, path_values[1:] - path_values[:-1]
+                )
+        grouping_gaps = np.minimum(grouping_gaps, path_minima)
+
+    groups: list[tuple[int, int]] = []
+    group_start = 0
+    for band, gap in enumerate(grouping_gaps):
+        if gap > band_gap_threshold:
+            groups.append((group_start, band + 1))
+            group_start = band + 1
+    groups.append((group_start, band_count))
+
+    gxx = np.zeros((band_count, samples, samples), dtype=np.float64)
+    gxy = np.zeros_like(gxx)
+    group_starts = np.zeros(band_count, dtype=np.int32)
+    group_sizes = np.ones(band_count, dtype=np.int32)
+    delta_kx = np.dot(
+        np.array([1.0 / (samples - 1), 0.0]), reciprocal[0]
+    )
+    delta_ky = np.dot(
+        np.array([0.0, 1.0 / (samples - 1)]), reciprocal[1]
+    )
+    rows: list[dict[str, float | int]] = []
+
+    for group_index, (start, end) in enumerate(groups):
+        size = end - start
+        metric = np.zeros(
+            (samples - 1, samples - 1, 2, 2), dtype=np.float64
+        )
+        tism = np.zeros((samples - 1, samples - 1), dtype=np.float64)
+        dism = np.zeros_like(tism)
+        for ix in range(samples - 1):
+            for iy in range(samples - 1):
+                tensor = band_functions.geom_tensor(
+                    vectors,
+                    vectors_dkx,
+                    vectors_dky,
+                    reciprocal,
+                    start,
+                    ix,
+                    iy,
+                    size,
+                )
+                metric[ix, iy] = np.real(tensor)
+                geometry_berry = -2 * np.imag(tensor)
+                berry_xy = geometry_berry[0, 1]
+                tism[ix, iy] = np.trace(metric[ix, iy]) - np.abs(berry_xy)
+                dism[ix, iy] = (
+                    np.linalg.det(metric[ix, iy])
+                    - 0.25 * np.abs(berry_xy) ** 2
+                )
+
+        group_gxx = np.zeros((samples, samples), dtype=np.float64)
+        group_gxy = np.zeros_like(group_gxx)
+        group_gxx[:-1, :-1] = metric[:, :, 0, 0]
+        group_gxy[:-1, :-1] = metric[:, :, 0, 1]
+        group_gxx[-1, :-1] = group_gxx[0, :-1]
+        group_gxx[:-1, -1] = group_gxx[:-1, 0]
+        group_gxx[-1, -1] = group_gxx[0, 0]
+        group_gxy[-1, :-1] = group_gxy[0, :-1]
+        group_gxy[:-1, -1] = group_gxy[:-1, 0]
+        group_gxy[-1, -1] = group_gxy[0, 0]
+        for band in range(start, end):
+            gxx[band] = group_gxx
+            gxy[band] = group_gxy
+            group_starts[band] = start
+            group_sizes[band] = size
+
+        # Preserve the CLI's exact std_g indexing as well as its integration
+        # convention for the trace and determinant inequalities.
+        g_variance_sum = np.var(metric[0, 0]) + np.var(metric[0, 1])
+        rows.append(
+            {
+                "band": int(start),
+                "band_end": int(end - 1),
+                "group": int(group_index),
+                "std_g": float(np.sqrt(g_variance_sum)),
+                "av_gxx": float(np.mean(metric[:, :, 0, 0])),
+                "std_gxx": float(np.std(metric[:, :, 0, 0])),
+                "av_gxy": float(np.mean(metric[:, :, 0, 1])),
+                "std_gxy": float(np.std(metric[:, :, 0, 1])),
+                "T": float(
+                    np.sum(tism) * delta_kx * delta_ky / (2 * np.pi)
+                ),
+                "D": float(
+                    np.sum(dism) * delta_kx * delta_ky / (2 * np.pi)
+                ),
+            }
+        )
+
+    result = {
+        "samples": samples,
+        "bands": band_count,
+        "gxx": np.ascontiguousarray(gxx).ravel(),
+        "gxy": np.ascontiguousarray(gxy).ravel(),
+        "group_start": group_starts,
+        "group_size": group_sizes,
+        "rows": rows,
+        "bgt": band_gap_threshold,
+    }
+    if cached_base is not None:
+        _geometry_base_cache = None
+    return result
 
 
 def compute_lattice(parameters: dict[str, Any]) -> dict[str, Any]:
     """Return real- and reciprocal-space geometry for declarative SVG views."""
 
     model = _model(parameters)
-    _, lattice_vectors, basis, reciprocal, _ = model.unit_cell()
+    _, lattice_vectors, basis, reciprocal, symmetry_points = model.unit_cell()
     sites: list[tuple[float, float, int, int, int]] = []
     for i in range(-3, 4):
         for j in range(-3, 4):
@@ -392,5 +808,13 @@ def compute_lattice(parameters: dict[str, Any]) -> dict[str, Any]:
         ).ravel(),
         "bz": bz.ravel(),
         "ordinary_bz": ordinary_bz.ravel(),
+        "sym_points": [
+            {
+                "label": label.replace("$", "").replace("\\Gamma", "Γ"),
+                "k1": float(point[0]),
+                "k2": float(point[1]),
+            }
+            for label, point in symmetry_points
+        ],
         "basis_count": len(basis),
     }

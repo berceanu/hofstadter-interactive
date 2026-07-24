@@ -1,4 +1,8 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import type { LatticeKind } from "../compute/contracts";
 import { useAppStore } from "../state/store";
 
@@ -8,13 +12,81 @@ const lattices: { value: LatticeKind; label: string }[] = [
   { value: "honeycomb", label: "Honeycomb" },
   { value: "kagome", label: "Kagome" },
   { value: "bravais", label: "General Bravais" },
+  { value: "custom", label: "Custom basis" },
 ];
 
 export function ParameterPanel() {
   const parameters = useAppStore((state) => state.parameters);
   const setParameter = useAppStore((state) => state.setParameter);
+  const setFlux = useAppStore((state) => state.setFlux);
   const setLattice = useAppStore((state) => state.setLattice);
   const [hoppings, setHoppings] = useState(parameters.hoppings.join(", "));
+  const [fluxDraft, setFluxDraft] = useState({
+    p: String(parameters.p),
+    q: String(parameters.q),
+  });
+  const [editingFlux, setEditingFlux] = useState(false);
+  const [customBasis, setCustomBasis] = useState(
+    parameters.customBasis.map((point) => point.join(", ")).join("\n"),
+  );
+
+  useEffect(() => {
+    setHoppings(parameters.hoppings.join(", "));
+  }, [parameters.hoppings]);
+
+  useEffect(() => {
+    if (editingFlux) return;
+    setFluxDraft({
+      p: String(parameters.p),
+      q: String(parameters.q),
+    });
+  }, [editingFlux, parameters.p, parameters.q]);
+
+  useEffect(() => {
+    setCustomBasis(
+      parameters.customBasis.map((point) => point.join(", ")).join("\n"),
+    );
+  }, [parameters.customBasis]);
+
+  const commitFluxDraft = () => {
+    const parsedQ = Number(fluxDraft.q);
+    const q = fluxDraft.q.trim() && Number.isFinite(parsedQ)
+      ? Math.max(2, Math.min(199, Math.trunc(parsedQ)))
+      : parameters.q;
+    const parsedP = Number(fluxDraft.p);
+    const p = fluxDraft.p.trim() && Number.isFinite(parsedP)
+      ? Math.max(1, Math.min(q - 1, Math.trunc(parsedP)))
+      : Math.min(parameters.p, q - 1);
+    setFlux(p, q);
+    setEditingFlux(false);
+  };
+
+  const updateFluxDraft = (key: "p" | "q", value: string) => {
+    const nextDraft = { ...fluxDraft, [key]: value };
+    setFluxDraft(nextDraft);
+    const p = Number(nextDraft.p);
+    const q = Number(nextDraft.q);
+    if (
+      nextDraft.p.trim()
+      && nextDraft.q.trim()
+      && Number.isInteger(p)
+      && Number.isInteger(q)
+      && p >= 1
+      && q >= 2
+      && q <= 199
+      && p < q
+    ) {
+      setFlux(p, q);
+    }
+  };
+
+  const finishFluxOnEnter = (
+    event: KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    event.currentTarget.blur();
+  };
 
   return (
     <aside className="parameter-panel" aria-label="Scientific parameters">
@@ -44,35 +116,38 @@ export function ParameterPanel() {
             φ = {parameters.p}/{parameters.q}
           </output>
         </div>
-        <div className="split-fields">
+        <div
+          className="split-fields"
+          onFocusCapture={() => setEditingFlux(true)}
+          onBlur={(event) => {
+            const nextTarget = event.relatedTarget as Node | null;
+            if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+            commitFluxDraft();
+          }}
+        >
           <label className="field compact">
             <span>p</span>
             <input
               type="number"
               min="1"
-              max={parameters.q - 1}
-              value={parameters.p}
-              onChange={(event) =>
-                setParameter(
-                  "p",
-                  Math.max(1, Math.min(parameters.q - 1, Number(event.target.value))),
-                )
-              }
+              max={Math.max(
+                1,
+                (Number(fluxDraft.q) || parameters.q) - 1,
+              )}
+              value={fluxDraft.p}
+              onChange={(event) => updateFluxDraft("p", event.target.value)}
+              onKeyDown={finishFluxOnEnter}
             />
           </label>
           <label className="field compact">
             <span>q</span>
             <input
               type="number"
-              min="3"
+              min="2"
               max="199"
-              value={parameters.q}
-              onChange={(event) =>
-                setParameter(
-                  "q",
-                  Math.max(3, Math.min(199, Number(event.target.value))),
-                )
-              }
+              value={fluxDraft.q}
+              onChange={(event) => updateFluxDraft("q", event.target.value)}
+              onKeyDown={finishFluxOnEnter}
             />
           </label>
         </div>
@@ -80,17 +155,21 @@ export function ParameterPanel() {
           className="range"
           aria-label="Flux denominator q"
           type="range"
-          min="3"
-          max="97"
-          step="2"
-          value={Math.min(97, parameters.q)}
+          min="2"
+          max="199"
+          step="1"
+          value={parameters.q}
           onChange={(event) => setParameter("q", Number(event.target.value))}
         />
-        <div className="range-labels"><span>3</span><span>97</span></div>
+        <div className="range-labels"><span>2</span><span>199</span></div>
       </div>
 
       <label className="field">
-        <span>Hoppings t₁, t₂, …</span>
+        <span>
+          {parameters.lattice === "custom"
+            ? "Neighbor-shell hoppings t₁, t₂, …"
+            : "Hoppings t₁, t₂, …"}
+        </span>
         <input
           value={hoppings}
           inputMode="decimal"
@@ -112,6 +191,42 @@ export function ParameterPanel() {
         <small>comma-separated neighbor amplitudes</small>
       </label>
 
+      {parameters.lattice === "custom" && (
+        <label className="field custom-basis-field">
+          <span>Basis sites (fractional a₁, a₂)</span>
+          <textarea
+            aria-label="Custom basis sites"
+            rows={4}
+            value={customBasis}
+            onChange={(event) => setCustomBasis(event.target.value)}
+            onBlur={() => {
+              const parsed = customBasis
+                .split(/\n|;/)
+                .map((entry) => entry.split(",").map(Number))
+                .filter(
+                  (entry): entry is [number, number] =>
+                    entry.length === 2
+                    && Number.isFinite(entry[0])
+                    && Number.isFinite(entry[1]),
+                )
+                .slice(0, 4);
+              if (parsed.length) {
+                setParameter("customBasis", parsed);
+              } else {
+                setCustomBasis(
+                  parameters.customBasis
+                    .map((point) => point.join(", "))
+                    .join("\n"),
+                );
+              }
+            }}
+          />
+          <small>
+            one x,y pair per line · up to 4 sites · generic upstream solver
+          </small>
+        </label>
+      )}
+
       <div className="split-fields">
         <label className="field compact">
           <span>Anisotropy α</span>
@@ -121,7 +236,10 @@ export function ParameterPanel() {
             max="4"
             step="0.05"
             value={parameters.alpha}
-            disabled={parameters.lattice === "square" || parameters.lattice === "triangular"}
+            disabled={
+              parameters.lattice === "square"
+              || parameters.lattice === "triangular"
+            }
             onChange={(event) => setParameter("alpha", Number(event.target.value))}
           />
         </label>
@@ -145,7 +263,10 @@ export function ParameterPanel() {
             min="1"
             max="180"
             value={parameters.theta[0]}
-            disabled={parameters.lattice !== "bravais"}
+            disabled={
+              parameters.lattice !== "bravais"
+              && parameters.lattice !== "custom"
+            }
             onChange={(event) =>
               setParameter("theta", [
                 Number(event.target.value),
@@ -161,7 +282,10 @@ export function ParameterPanel() {
             min="2"
             max="360"
             value={parameters.theta[1]}
-            disabled={parameters.lattice !== "bravais"}
+            disabled={
+              parameters.lattice !== "bravais"
+              && parameters.lattice !== "custom"
+            }
             onChange={(event) =>
               setParameter("theta", [
                 parameters.theta[0],
@@ -188,15 +312,28 @@ export function ParameterPanel() {
           onChange={(event) => setParameter("samples", Number(event.target.value))}
         />
         <div className="range-labels"><span>faster</span><span>finer</span></div>
+        <small
+          className="control-help"
+          title="The butterfly follows the upstream Γ-point sampling convention."
+        >
+          Bands only · the butterfly remains Γ-point sampled.
+        </small>
       </div>
 
-      <div className="local-note">
-        <span aria-hidden="true">⌁</span>
-        <div>
-          <strong>Private by construction</strong>
-          <p>Every eigensolve runs in this browser. No parameters or data leave your device.</p>
-        </div>
-      </div>
+      <label className="field">
+        <span>Band-gap threshold bgt</span>
+        <input
+          aria-label="Band-gap threshold bgt"
+          type="number"
+          min="0"
+          max="10"
+          step="0.001"
+          value={parameters.bgt}
+          onChange={(event) => setParameter("bgt", Number(event.target.value))}
+        />
+        <small>touching-band grouping · upstream default 0.01</small>
+      </label>
+
     </aside>
   );
 }

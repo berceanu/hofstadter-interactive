@@ -6,8 +6,14 @@ import numpy as np
 import pytest
 
 from HT.functions.butterfly import chern
+from HT.functions.band_structure import geom_tensor
 from HT.models.hofstadter import Hofstadter
-from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
+from HT.web import (
+    compute_bands,
+    compute_butterfly_batch,
+    compute_geometry,
+    compute_lattice,
+)
 
 
 CASES = [
@@ -76,18 +82,210 @@ def test_band_and_lattice_contracts_are_finite():
     lattice = compute_lattice(parameters)
     assert bands["energy"].shape == (3 * 7 * 7,)
     assert bands["berry"].shape == bands["energy"].shape
+    assert bands["wilson"].shape == (3 * 7,)
     assert np.isfinite(bands["energy"]).all()
     assert bands["chern"].shape == (3,)
     assert bands["group_start"].shape == (3,)
     assert bands["group_size"].shape == (3,)
     assert bands["path_k1"].shape == bands["path_x"].shape
     assert bands["path_k2"].shape == bands["path_x"].shape
+    assert bands["bz"].size >= 10
+    assert bands["ordinary_bz"].size >= 10
+    assert [point["label"] for point in bands["sym_points"]] == [
+        "Γ",
+        "X",
+        "M",
+        "Y",
+    ]
     assert lattice["sites"].size > 0
     assert lattice["bz"].ndim == 1
     assert lattice["bz"].size >= 10
     assert lattice["bz"].size % 2 == 0
     assert lattice["ordinary_bz"].size >= 10
     assert lattice["ordinary_reciprocal_vectors"].shape == (4,)
+    assert lattice["sym_points"] == bands["sym_points"]
+    assert np.array_equal(lattice["bz"], bands["bz"])
+    assert np.array_equal(lattice["ordinary_bz"], bands["ordinary_bz"])
+
+
+@pytest.mark.parametrize("q", [3, 4, 5])
+def test_square_wilson_winding_matches_diophantine_chern(q):
+    samples = 31
+    result = compute_bands(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "p": 1,
+            "q": q,
+            "samples": samples,
+        }
+    )
+    loops = result["wilson"].reshape(q, samples)
+    unwrapped = np.unwrap(loops, axis=1)
+    # The magnetic reciprocal basis traverses k₂ with the orientation opposite
+    # to the Berry plaquette boundary, hence C is minus the plotted phase rise.
+    winding = np.rint(
+        (unwrapped[:, 0] - unwrapped[:, -1]) / (2 * np.pi)
+    ).astype(int)
+    diophantine, _ = chern(1, q)
+
+    isolated = result["group_size"] == 1
+    assert np.array_equal(winding[isolated], np.asarray(diophantine)[isolated])
+
+    group_starts = np.flatnonzero(
+        result["group_start"] == np.arange(result["group_start"].size)
+    )
+    assert int(np.sum(winding[group_starts])) == 0
+
+
+def test_band_property_rows_match_upstream_cli_definitions():
+    samples = 11
+    result = compute_bands(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "p": 1,
+            "q": 4,
+            "samples": samples,
+            "bgt": 0.01,
+        }
+    )
+    values = result["energy"].reshape(4, samples, samples)
+    berry = result["berry"].reshape(4, samples, samples)
+    widths = np.max(values, axis=(1, 2)) - np.min(values, axis=(1, 2))
+    gaps = np.full(4, np.nan)
+    gaps[:-1] = (
+        np.min(values[1:], axis=(1, 2))
+        - np.max(values[:-1], axis=(1, 2))
+    )
+
+    assert [row["band"] for row in result["property_rows"]] == [3, 2, 1, 0]
+    for row in result["property_rows"]:
+        band = row["band"]
+        assert np.isclose(row["width"], widths[band], rtol=0, atol=1e-12)
+        if band == 3:
+            assert row["gap"] is None
+            assert row["gap_width"] is None
+        else:
+            assert np.isclose(row["gap"], gaps[band], rtol=0, atol=1e-12)
+            assert np.isclose(
+                row["gap_width"],
+                gaps[band] / widths[band],
+                rtol=0,
+                atol=1e-12,
+            )
+        group_flux = berry[band, :-1, :-1]
+        expected_std = np.std(group_flux) / np.abs(np.average(group_flux))
+        assert np.isclose(row["std_B"], expected_std, rtol=1e-12, atol=1e-12)
+        assert row["C"] == result["chern"][band]
+
+    assert len(result["group_rows"]) == 3
+    assert result["group_rows"][1]["band"] == 1
+    assert result["group_rows"][1]["band_end"] == 2
+    assert result["group_rows"][1]["isolated"] is False
+
+    merged = compute_bands(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "p": 1,
+            "q": 4,
+            "samples": 7,
+            "bgt": 10.0,
+        }
+    )
+    assert len(merged["group_rows"]) == 1
+
+
+def test_square_q4_geometry_matches_upstream_tensor_statistics():
+    samples = 7
+    parameters = {
+        "lattice": "square",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 2],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 4,
+        "samples": samples,
+        "bgt": 0.01,
+    }
+    result = compute_geometry(parameters)
+    model = Hofstadter(1, 4, t=[1.0], lat="square", theta=(1, 2))
+    band_count, _, _, reciprocal, _ = model.unit_cell()
+    vectors = np.empty(
+        (band_count, band_count, samples, samples), dtype=np.complex128
+    )
+    vectors_dkx = np.empty_like(vectors)
+    vectors_dky = np.empty_like(vectors)
+    offset = 1 / (1000 * (samples - 1))
+    for ix, frac_x in enumerate(np.linspace(0, 1, samples)):
+        for iy, frac_y in enumerate(np.linspace(0, 1, samples)):
+            momenta = [
+                np.matmul([frac_x, frac_y], reciprocal),
+                np.matmul([(frac_x + offset) % 1, frac_y], reciprocal),
+                np.matmul([frac_x, (frac_y + offset) % 1], reciprocal),
+            ]
+            destinations = [vectors, vectors_dkx, vectors_dky]
+            for momentum, destination in zip(momenta, destinations):
+                eigvals, eigvecs = np.linalg.eigh(model.hamiltonian(momentum))
+                destination[:, :, ix, iy] = eigvecs[:, np.argsort(eigvals)]
+
+    delta_kx = np.dot([1 / (samples - 1), 0], reciprocal[0])
+    delta_ky = np.dot([0, 1 / (samples - 1)], reciprocal[1])
+    gxx = result["gxx"].reshape(band_count, samples, samples)
+    gxy = result["gxy"].reshape(band_count, samples, samples)
+    for row in result["rows"]:
+        start = row["band"]
+        size = row["band_end"] - start + 1
+        metric = np.empty((samples - 1, samples - 1, 2, 2))
+        tism = np.empty((samples - 1, samples - 1))
+        dism = np.empty_like(tism)
+        for ix in range(samples - 1):
+            for iy in range(samples - 1):
+                tensor = geom_tensor(
+                    vectors,
+                    vectors_dkx,
+                    vectors_dky,
+                    reciprocal,
+                    start,
+                    ix,
+                    iy,
+                    size,
+                )
+                metric[ix, iy] = np.real(tensor)
+                berry_xy = (-2 * np.imag(tensor))[0, 1]
+                tism[ix, iy] = np.trace(metric[ix, iy]) - abs(berry_xy)
+                dism[ix, iy] = (
+                    np.linalg.det(metric[ix, iy]) - 0.25 * abs(berry_xy) ** 2
+                )
+
+        expected = {
+            "std_g": np.sqrt(np.var(metric[0, 0]) + np.var(metric[0, 1])),
+            "av_gxx": np.mean(metric[:, :, 0, 0]),
+            "std_gxx": np.std(metric[:, :, 0, 0]),
+            "av_gxy": np.mean(metric[:, :, 0, 1]),
+            "std_gxy": np.std(metric[:, :, 0, 1]),
+            "T": np.sum(tism) * delta_kx * delta_ky / (2 * np.pi),
+            "D": np.sum(dism) * delta_kx * delta_ky / (2 * np.pi),
+        }
+        for key, value in expected.items():
+            assert np.isclose(row[key], value, rtol=1e-6, atol=1e-9)
+        assert np.allclose(
+            gxx[start, :-1, :-1], metric[:, :, 0, 0], rtol=1e-6, atol=1e-9
+        )
+        assert np.allclose(
+            gxy[start, :-1, :-1], metric[:, :, 0, 1], rtol=1e-6, atol=1e-9
+        )
 
 
 def test_honeycomb_has_threefold_coordination_and_graphene_limits():
@@ -160,6 +358,51 @@ def test_butterfly_reports_diophantine_topology_availability(
         5,
     )
     assert result["topology_available"] is expected
+
+
+def test_custom_basis_uses_upstream_generic_hamiltonian_path():
+    parameters = {
+        "lattice": "custom",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 3],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 3,
+        "samples": 7,
+        "customBasis": [[0.0, 0.0], [0.5, 0.0], [0.0, 0.5]],
+    }
+    result = compute_butterfly_batch(parameters, 1, 2)
+    reference = Hofstadter(
+        1,
+        3,
+        t=[1.0],
+        lat="custom",
+        alpha=1.0,
+        theta=(1, 3),
+        period=1,
+    )
+    reference_energy = np.sort(
+        np.linalg.eigvalsh(reference.hamiltonian(np.array([0.0, 0.0])))
+    )
+    assert np.allclose(
+        result["energy"],
+        reference_energy,
+        rtol=1e-9,
+        atol=1e-11,
+    )
+    assert result["topology_available"] is False
+
+    two_site = {
+        **parameters,
+        "customBasis": [[0.0, 0.0], [0.5, 0.25]],
+    }
+    lattice = compute_lattice(two_site)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        bands = compute_bands(two_site)
+    assert lattice["basis_count"] == 2
+    assert bands["bands"] == 2 * parameters["q"]
+    assert np.isfinite(bands["energy"]).all()
 
 
 @pytest.mark.parametrize("lattice,hoppings,period,theta", CASES)

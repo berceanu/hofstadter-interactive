@@ -12,6 +12,7 @@ describe("URL scientific state", () => {
       "?view=bands&lat=bravais&p=2&q=11&t=1,0,-0.25&alpha=1.2&tn=67&td=180&period=2&samp=21",
     );
     expect(state).toMatchObject({
+      focus: "bands",
       view: "bands",
       lattice: "bravais",
       p: 2,
@@ -40,6 +41,50 @@ describe("URL scientific state", () => {
     expect(query.get("p")).toBe("2");
     expect(query.get("q")).toBe("13");
     expect(query.get("t")).toBe("1,0.1");
-    expect(query.get("view")).toBe("lattice");
+    expect(query.get("focus")).toBe("lattice");
+    expect(query.has("view")).toBe(false);
+  });
+
+  it("repairs a malicious named-lattice angle and reducible flux", () => {
+    const state = parseUrlState(
+      "?view=butterfly&lat=honeycomb&p=2&q=4&tn=1&td=2",
+    );
+    expect(state).toMatchObject({
+      focus: "butterfly",
+      lattice: "honeycomb",
+      p: 1,
+      q: 2,
+      theta: [1, 3],
+    });
+  });
+
+  it("defaults to the workspace and accepts legacy view links", () => {
+    expect(parseUrlState("")).toMatchObject({ focus: "workspace" });
+    expect(parseUrlState("?view=wannier")).toMatchObject({
+      focus: "wannier",
+      view: "wannier",
+    });
+  });
+
+  it("round-trips a custom basis in the shared URL", () => {
+    writeUrlState(
+      {
+        ...defaultParameters,
+        lattice: "custom",
+        customBasis: [
+          [0, 0],
+          [0.5, 0.25],
+        ],
+      },
+      "lattice",
+    );
+    const parsed = parseUrlState(window.location.search);
+    expect(parsed).toMatchObject({
+      lattice: "custom",
+      customBasis: [
+        [0, 0],
+        [0.5, 0.25],
+      ],
+    });
   });
 });

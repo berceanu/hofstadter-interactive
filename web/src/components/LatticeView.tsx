@@ -43,8 +43,8 @@ function equalAspectProjection(points: [number, number][], box: PlotBox) {
   };
 }
 
-export function LatticeView() {
-  const { lattice } = useResultCache();
+export function LatticeView({ compact = false }: { compact?: boolean }) {
+  const { lattice, latticeStale } = useResultCache();
   const parameters = useAppStore((state) => state.parameters);
   const latticeName = parameters.lattice;
   if (!lattice) {
@@ -63,6 +63,20 @@ export function LatticeView() {
   const magneticBzPoints = pairs(lattice.bz);
   const ordinaryBzPoints = pairs(lattice.ordinaryBz);
   const reciprocalVectors = pairs(lattice.ordinaryReciprocalVectors);
+  const magneticReciprocalVectors = pairs(lattice.reciprocalVectors);
+  const symmetryPoints = lattice.symPoints.map((point) => {
+    const k1 = point.k1 > 0.5 ? point.k1 - 1 : point.k1;
+    const k2 = point.k2 > 0.5 ? point.k2 - 1 : point.k2;
+    return {
+      label: point.label,
+      x:
+        k1 * magneticReciprocalVectors[0][0]
+        + k2 * magneticReciprocalVectors[1][0],
+      y:
+        k1 * magneticReciprocalVectors[0][1]
+        + k2 * magneticReciprocalVectors[1][1],
+    };
+  });
   const reciprocalProjection = equalAspectProjection(
     [
       ...ordinaryBzPoints,
@@ -70,6 +84,9 @@ export function LatticeView() {
       [0, 0],
       ...reciprocalVectors.map(
         ([vx, vy]) => [vx * 0.42, vy * 0.42] as [number, number],
+      ),
+      ...symmetryPoints.map(
+        (point) => [point.x, point.y] as [number, number],
       ),
     ],
     { left: 535, top: 95, width: 420, height: 360 },
@@ -82,7 +99,16 @@ export function LatticeView() {
   );
 
   return (
-    <div className="plot-shell lattice-shell" data-plot-export>
+    <div
+      className={[
+        "plot-shell",
+        "lattice-shell",
+        compact ? "compact" : "",
+        latticeStale ? "is-stale" : "",
+      ].filter(Boolean).join(" ")}
+      data-plot-export
+      data-recomputing={latticeStale}
+    >
       <svg
         className="lattice-svg"
         viewBox="0 0 1000 550"
@@ -207,10 +233,28 @@ export function LatticeView() {
             </text>
           </g>
         ))}
-        <circle cx={bx(0)} cy={by(0)} r="5" className="gamma-point" />
-        <text x={bx(0) + 10} y={by(0) - 10} className="vector-label">
-          Γ
-        </text>
+        <g
+          className="symmetry-points"
+          style={{ opacity: Math.min(1, 12 / parameters.q) }}
+        >
+          {symmetryPoints.map((point) => (
+            <g key={point.label}>
+              <circle
+                cx={bx(point.x)}
+                cy={by(point.y)}
+                r="4.5"
+                className="gamma-point"
+              />
+              <text
+                x={bx(point.x) + 9}
+                y={by(point.y) - 9}
+                className="vector-label"
+              >
+                {point.label}
+              </text>
+            </g>
+          ))}
+        </g>
         <g className="lattice-legend">
           <line x1="48" x2="76" y1="495" y2="495" className="unit-cell" />
           <text x="84" y="500">
@@ -233,6 +277,11 @@ export function LatticeView() {
           <text x="730" y="502">magnetic BZ (folded ×{parameters.q})</text>
         </g>
       </svg>
+      {latticeStale && (
+        <div className="recompute-chip" role="status">
+          recomputing
+        </div>
+      )}
     </div>
   );
 }

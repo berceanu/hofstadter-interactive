@@ -17,6 +17,12 @@ const parameters: ScientificParameters = {
   theta: [1, 2],
   period: 1,
   samples: 7,
+  bgt: 0.01,
+  customBasis: [
+    [0, 0],
+    [0.5, 0],
+    [0, 0.5],
+  ],
 };
 
 function latticeResult(requestId: string): LatticeResult {
@@ -32,6 +38,7 @@ function latticeResult(requestId: string): LatticeResult {
     ordinaryReciprocalVectors: new Float64Array(),
     bz: new Float64Array(),
     ordinaryBz: new Float64Array(),
+    symPoints: [],
     basisCount: 1,
   };
 }

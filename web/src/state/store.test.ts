@@ -16,6 +16,14 @@ describe("scientific parameter invariants", () => {
     expect(useAppStore.getState().parameters).toMatchObject({ p: 6, q: 7 });
   });
 
+  it("applies a replacement flux pair atomically", () => {
+    useAppStore.setState({
+      parameters: { ...defaultParameters, p: 1, q: 12 },
+    });
+    useAppStore.getState().setFlux(6, 11);
+    expect(useAppStore.getState().parameters).toMatchObject({ p: 6, q: 11 });
+  });
+
   it("prevents a degenerate Bravais angle and invalid scalar bounds", () => {
     const normalized = normalizeParameters({
       ...defaultParameters,
@@ -43,5 +51,63 @@ describe("scientific parameter invariants", () => {
       q: 3,
       theta: [89, 90],
     });
+  });
+
+  it("forces named lattices to their canonical angle", () => {
+    const honeycomb = normalizeParameters({
+      ...defaultParameters,
+      lattice: "honeycomb",
+      theta: [1, 2],
+    });
+    expect(honeycomb.theta).toEqual([1, 3]);
+
+    const bravais = normalizeParameters({
+      ...defaultParameters,
+      lattice: "bravais",
+      theta: [67, 180],
+    });
+    expect(bravais.theta).toEqual([67, 180]);
+  });
+
+  it("always reduces the displayed magnetic flux", () => {
+    const normalized = normalizeParameters({
+      ...defaultParameters,
+      p: 2,
+      q: 4,
+    });
+    expect(normalized).toMatchObject({ p: 1, q: 2 });
+  });
+
+  it("defaults and bounds the upstream band-gap threshold", () => {
+    expect(
+      normalizeParameters({ ...defaultParameters, bgt: Number.NaN }).bgt,
+    ).toBe(0.01);
+    expect(normalizeParameters({ ...defaultParameters, bgt: -1 }).bgt).toBe(0);
+  });
+
+  it("bounds, deduplicates, and preserves a custom fractional basis", () => {
+    const normalized = normalizeParameters({
+      ...defaultParameters,
+      lattice: "custom",
+      customBasis: [
+        [0, 0],
+        [0.5, 0.25],
+        [0.5, 0.25],
+        [3, -1],
+      ],
+    });
+    expect(normalized.customBasis).toEqual([
+      [0, 0],
+      [0.5, 0.25],
+      [0.999999, 0],
+    ]);
+    expect(normalized.theta).toEqual([1, 2]);
+  });
+
+  it("switches among upstream-compatible topology palettes", () => {
+    useAppStore.getState().setTopologicalPalette("red-blue");
+    expect(useAppStore.getState().topologicalPalette).toBe("red-blue");
+    useAppStore.getState().setTopologicalPalette("jet");
+    expect(useAppStore.getState().topologicalPalette).toBe("jet");
   });
 });

@@ -3,11 +3,14 @@ export type LatticeKind =
   | "triangular"
   | "honeycomb"
   | "kagome"
-  | "bravais";
+  | "bravais"
+  | "custom";
 
 export type ViewKind = "butterfly" | "wannier" | "lattice" | "bands";
-export type ButterflyColorMode = "spectral" | "chern";
-export type SurfaceMetric = "energy" | "berry";
+export type FocusKind = "workspace" | ViewKind;
+export type ButterflyColorMode = "spectral" | "chern" | "gaps";
+export type TopologicalPalette = "avron" | "jet" | "red-blue";
+export type SurfaceMetric = "energy" | "berry" | "gxx" | "gxy";
 
 export interface ScientificParameters {
   lattice: LatticeKind;
@@ -19,6 +22,8 @@ export interface ScientificParameters {
   theta: [number, number];
   period: number;
   samples: number;
+  bgt: number;
+  customBasis: [number, number][];
 }
 
 export interface ButterflyChunk {
@@ -49,9 +54,13 @@ export interface BandResult {
   bands: number;
   energy: Float64Array;
   berry: Float64Array;
+  wilson: Float64Array;
   chern: Int32Array;
   groupStart: Int32Array;
   groupSize: Int32Array;
+  propertyRows: BandPropertyRow[];
+  groupRows: BandGroupRow[];
+  bgt: number;
   pathX: Float64Array;
   pathK1: Float64Array;
   pathK2: Float64Array;
@@ -59,6 +68,56 @@ export interface BandResult {
   pathTicks: Float64Array;
   pathLabels: string[];
   reciprocal: Float64Array;
+  symPoints: SymmetryPoint[];
+  bz: Float64Array;
+  ordinaryBz: Float64Array;
+  elapsedMs: number;
+}
+
+export interface SymmetryPoint {
+  label: string;
+  k1: number;
+  k2: number;
+}
+
+export interface BandPropertyRow {
+  band: number;
+  group: number;
+  isolated: boolean;
+  width: number;
+  gap: number | null;
+  gapWidth: number | null;
+  stdB: number;
+  chern: number;
+}
+
+export interface BandGroupRow extends BandPropertyRow {
+  bandEnd: number;
+}
+
+export interface GeometryRow {
+  band: number;
+  bandEnd: number;
+  group: number;
+  stdG: number;
+  averageGxx: number;
+  stdGxx: number;
+  averageGxy: number;
+  stdGxy: number;
+  averageT: number;
+  averageD: number;
+}
+
+export interface GeometryResult {
+  requestId: string;
+  samples: number;
+  bands: number;
+  gxx: Float64Array;
+  gxy: Float64Array;
+  groupStart: Int32Array;
+  groupSize: Int32Array;
+  rows: GeometryRow[];
+  bgt: number;
   elapsedMs: number;
 }
 
@@ -74,6 +133,7 @@ export interface LatticeResult {
   ordinaryReciprocalVectors: Float64Array;
   bz: Float64Array;
   ordinaryBz: Float64Array;
+  symPoints: SymmetryPoint[];
   basisCount: number;
 }
 
@@ -105,6 +165,10 @@ export interface ComputeEngine {
     requestId: string,
     parameters: ScientificParameters,
   ): Promise<BandResult>;
+  computeGeometry(
+    requestId: string,
+    parameters: ScientificParameters,
+  ): Promise<GeometryResult>;
   computeLattice(
     requestId: string,
     parameters: ScientificParameters,
