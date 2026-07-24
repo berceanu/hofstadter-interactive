@@ -1,4 +1,3 @@
-import { scaleLinear } from "d3-scale";
 import { extent } from "../utils/arrays";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
@@ -21,37 +20,64 @@ function pathFrom(
     .join(" ");
 }
 
+interface PlotBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function equalAspectProjection(points: [number, number][], box: PlotBox) {
+  const xExtent = extent(points.map((point) => point[0]), [-1, 1]);
+  const yExtent = extent(points.map((point) => point[1]), [-1, 1]);
+  const xSpan = Math.max(1e-9, xExtent[1] - xExtent[0]);
+  const ySpan = Math.max(1e-9, yExtent[1] - yExtent[0]);
+  const scale = Math.min(box.width / xSpan, box.height / ySpan);
+  const centerX = (xExtent[0] + xExtent[1]) / 2;
+  const centerY = (yExtent[0] + yExtent[1]) / 2;
+  const screenCenterX = box.left + box.width / 2;
+  const screenCenterY = box.top + box.height / 2;
+  return {
+    x: (value: number) => screenCenterX + (value - centerX) * scale,
+    y: (value: number) => screenCenterY - (value - centerY) * scale,
+  };
+}
+
 export function LatticeView() {
   const { lattice } = useResultCache();
-  const latticeName = useAppStore((state) => state.parameters.lattice);
+  const parameters = useAppStore((state) => state.parameters);
+  const latticeName = parameters.lattice;
   if (!lattice) {
     return <div className="view-loading">Constructing the real-space cell…</div>;
   }
 
   const sites = pairs(lattice.sites);
-  const xExtent = extent(
-    sites.map((site) => site[0]),
-    [-2, 2],
-  );
-  const yExtent = extent(
-    sites.map((site) => site[1]),
-    [-2, 2],
-  );
-  const x = scaleLinear().domain(xExtent).nice().range([45, 470]);
-  const y = scaleLinear().domain(yExtent).nice().range([470, 38]);
-  const bzPoints = pairs(lattice.bz);
-  const bzXExtent = extent(
-    bzPoints.map((point) => point[0]),
-    [-Math.PI, Math.PI],
-  );
-  const bzYExtent = extent(
-    bzPoints.map((point) => point[1]),
-    [-Math.PI, Math.PI],
-  );
-  const bx = scaleLinear().domain(bzXExtent).nice().range([570, 955]);
-  const by = scaleLinear().domain(bzYExtent).nice().range([450, 58]);
   const unitCell = pairs(lattice.unitCell);
   const magneticCell = pairs(lattice.magneticCell);
+  const localProjection = equalAspectProjection(
+    [...sites, ...unitCell],
+    { left: 45, top: 94, width: 420, height: 365 },
+  );
+  const x = localProjection.x;
+  const y = localProjection.y;
+  const bzPoints = pairs(lattice.bz);
+  const reciprocalVectors = pairs(lattice.reciprocalVectors);
+  const reciprocalProjection = equalAspectProjection(
+    [
+      ...bzPoints,
+      [0, 0],
+      ...reciprocalVectors.map(
+        ([vx, vy]) => [vx * 0.42, vy * 0.42] as [number, number],
+      ),
+    ],
+    { left: 535, top: 95, width: 420, height: 360 },
+  );
+  const bx = reciprocalProjection.x;
+  const by = reciprocalProjection.y;
+  const magneticProjection = equalAspectProjection(
+    magneticCell,
+    { left: 344, top: 126, width: 100, height: 112 },
+  );
 
   return (
     <div className="plot-shell lattice-shell" data-plot-export>
@@ -59,7 +85,7 @@ export function LatticeView() {
         className="lattice-svg"
         viewBox="0 0 1000 550"
         role="img"
-        aria-label={`${latticeName} real-space lattice and Brillouin zone`}
+        aria-label={`${latticeName} real-space lattice and magnetic Brillouin zone`}
         data-export-layer
       >
         <defs>
@@ -91,7 +117,7 @@ export function LatticeView() {
           {latticeName[0].toUpperCase() + latticeName.slice(1)} lattice
         </text>
         <text x="534" y="78" className="panel-title">
-          First Brillouin zone
+          Magnetic Brillouin zone
         </text>
         <g className="hopping-links">
           {Array.from({ length: lattice.links.length / 6 }, (_, index) => {
@@ -109,7 +135,6 @@ export function LatticeView() {
           })}
         </g>
         <path d={pathFrom(unitCell, x, y)} className="unit-cell" />
-        <path d={pathFrom(magneticCell, x, y)} className="magnetic-cell" />
         <g className="lattice-sites">
           {sites.map(([px, py], index) => (
             <circle
@@ -136,23 +161,40 @@ export function LatticeView() {
             </text>
           </g>
         ))}
+        <g className="magnetic-inset">
+          <rect x="326" y="92" width="136" height="166" rx="10" />
+          <text x="338" y="111" className="panel-kicker">
+            MAGNETIC CELL
+          </text>
+          <text x="338" y="127">
+            q = {parameters.q} · a₂
+          </text>
+          <path
+            d={pathFrom(
+              magneticCell,
+              magneticProjection.x,
+              magneticProjection.y,
+            )}
+            className="magnetic-cell"
+          />
+        </g>
         <path d={pathFrom(bzPoints, bx, by)} className="bz-boundary" />
-        {pairs(lattice.reciprocalVectors).map(([vx, vy], index) => (
+        {reciprocalVectors.map(([vx, vy], index) => (
           <g key={`b-${index}`}>
             <line
               x1={bx(0)}
               y1={by(0)}
-              x2={bx(vx * 0.45)}
-              y2={by(vy * 0.45)}
+              x2={bx(vx * 0.42)}
+              y2={by(vy * 0.42)}
               className="vector-arrow reciprocal-arrow"
               markerEnd="url(#arrow)"
             />
             <text
-              x={bx(vx * 0.45) + 8}
-              y={by(vy * 0.45) - 8}
+              x={bx(vx * 0.42) + 8}
+              y={by(vy * 0.42) - 8}
               className="vector-label"
             >
-              b{index + 1}
+              bᴹ{index + 1}
             </text>
           </g>
         ))}
@@ -163,8 +205,7 @@ export function LatticeView() {
         <g className="lattice-legend">
           <line x1="48" x2="76" y1="495" y2="495" className="unit-cell" />
           <text x="84" y="500">ordinary cell</text>
-          <line x1="190" x2="218" y1="495" y2="495" className="magnetic-cell" />
-          <text x="226" y="500">magnetic cell (q)</text>
+          <text x="190" y="500">equal spatial scale · MUC shown in inset</text>
         </g>
       </svg>
     </div>

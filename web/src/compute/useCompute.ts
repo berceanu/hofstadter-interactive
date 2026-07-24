@@ -10,6 +10,16 @@ function requestId(view: string) {
   return `${view}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function computationError(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) return fallback;
+  const finalLine = error.message
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  return finalLine ? `Computation failed · ${finalLine}` : fallback;
+}
+
 export function useCompute() {
   const parameters = useAppStore((state) => state.parameters);
   const view = useAppStore((state) => state.view);
@@ -102,11 +112,11 @@ export function useCompute() {
             store.setProgress({
               phase: "error",
               fraction: 0,
-              message:
-                error instanceof Error ? error.message : "Computation failed.",
+              message: computationError(error, "Spectrum computation failed."),
             });
           });
       } else if (view === "bands") {
+        resultCache.beginBands();
         void engine
           .computeBands(id, parameters)
           .then((result) => {
@@ -124,11 +134,11 @@ export function useCompute() {
             store.setProgress({
               phase: "error",
               fraction: 0,
-              message:
-                error instanceof Error ? error.message : "Computation failed.",
+              message: computationError(error, "Band computation failed."),
             });
           });
       } else {
+        resultCache.beginLattice();
         void engine
           .computeLattice(id, parameters)
           .then((result) => {
@@ -145,8 +155,7 @@ export function useCompute() {
             store.setProgress({
               phase: "error",
               fraction: 0,
-              message:
-                error instanceof Error ? error.message : "Computation failed.",
+              message: computationError(error, "Lattice construction failed."),
             });
           });
       }

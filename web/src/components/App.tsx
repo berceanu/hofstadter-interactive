@@ -185,7 +185,12 @@ export default function App() {
                     >
                       {Array.from({ length: cache.bands.bands }, (_, band) => (
                         <option key={band} value={band}>
-                          {band + 1} · C={cache.bands!.chern[band]}
+                          {cache.bands!.groupSize[band] > 1
+                            ? `${band + 1} · group ${cache.bands!.groupStart[band] + 1}–${
+                                cache.bands!.groupStart[band]
+                                + cache.bands!.groupSize[band]
+                              } · Cg=${cache.bands!.chern[band]}`
+                            : `${band + 1} · C=${cache.bands!.chern[band]}`}
                         </option>
                       ))}
                     </select>

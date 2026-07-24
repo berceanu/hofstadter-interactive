@@ -41,25 +41,31 @@ export class PyodideWorkerEngine implements ComputeEngine {
     await this.remote.clearCancellation(requestId);
     const started = performance.now();
     const batchSize = parameters.q >= 71 ? 3 : 4;
-    for (let pStart = 1; pStart < parameters.q; pStart += batchSize) {
-      if (this.cancelled.has(requestId)) {
-        break;
-      }
-      const pEnd = Math.min(parameters.q, pStart + batchSize);
-      const progress = (pEnd - 1) / (parameters.q - 1);
-      const chunk = await this.remote.computeButterflyBatch(
-        requestId,
-        parameters,
-        pStart,
-        pEnd,
-        progress,
-      );
-      if (!this.cancelled.has(requestId)) {
+    try {
+      for (let pStart = 1; pStart < parameters.q; pStart += batchSize) {
+        if (this.cancelled.has(requestId)) {
+          throw new Error("cancelled");
+        }
+        const pEnd = Math.min(parameters.q, pStart + batchSize);
+        const progress = (pEnd - 1) / (parameters.q - 1);
+        const chunk = await this.remote.computeButterflyBatch(
+          requestId,
+          parameters,
+          pStart,
+          pEnd,
+          progress,
+        );
+        if (this.cancelled.has(requestId)) {
+          throw new Error("cancelled");
+        }
         onChunk(chunk);
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      return performance.now() - started;
+    } finally {
+      this.cancelled.delete(requestId);
+      await this.remote.clearCancellation(requestId);
     }
-    return performance.now() - started;
   }
 
   async computeBands(
@@ -69,7 +75,14 @@ export class PyodideWorkerEngine implements ComputeEngine {
     await this.ready;
     this.cancelled.delete(requestId);
     await this.remote.clearCancellation(requestId);
-    return this.remote.computeBands(requestId, parameters);
+    try {
+      const result = await this.remote.computeBands(requestId, parameters);
+      if (this.cancelled.has(requestId)) throw new Error("cancelled");
+      return result;
+    } finally {
+      this.cancelled.delete(requestId);
+      await this.remote.clearCancellation(requestId);
+    }
   }
 
   async computeLattice(
@@ -79,7 +92,14 @@ export class PyodideWorkerEngine implements ComputeEngine {
     await this.ready;
     this.cancelled.delete(requestId);
     await this.remote.clearCancellation(requestId);
-    return this.remote.computeLattice(requestId, parameters);
+    try {
+      const result = await this.remote.computeLattice(requestId, parameters);
+      if (this.cancelled.has(requestId)) throw new Error("cancelled");
+      return result;
+    } finally {
+      this.cancelled.delete(requestId);
+      await this.remote.clearCancellation(requestId);
+    }
   }
 
   async cancel(requestId: string): Promise<void> {

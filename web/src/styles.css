@@ -130,7 +130,7 @@ button {
 }
 
 .view-nav button span {
-  color: #506273;
+  color: #71879a;
   margin-right: 7px;
   font: 10px "DM Mono", monospace;
 }
@@ -238,7 +238,7 @@ button {
 }
 
 .field small {
-  color: #617487;
+  color: #71879a;
   font-size: 9px;
 }
 
@@ -285,7 +285,7 @@ button {
 .range-labels {
   display: flex;
   justify-content: space-between;
-  color: #607384;
+  color: #71879a;
   font: 8px "DM Mono", monospace;
 }
 
@@ -387,7 +387,7 @@ button {
 
 .band-select select {
   height: 32px;
-  width: 102px;
+  width: 190px;
 }
 
 .runtime-status {
@@ -514,7 +514,7 @@ button {
   position: absolute;
   top: 18px;
   right: 21px;
-  color: #516879;
+  color: #7d91a2;
   font: 8px "DM Mono", monospace;
   letter-spacing: 0.04em;
 }
@@ -574,7 +574,7 @@ button {
 
 .selection-card p {
   margin: 7px 0 0;
-  color: #647787;
+  color: #71879a;
   font-size: 10px;
 }
 
@@ -590,7 +590,7 @@ button {
 }
 
 .selection-card dt {
-  color: #637787;
+  color: #71879a;
   font-size: 8px;
   text-transform: uppercase;
 }
@@ -649,7 +649,7 @@ button {
 }
 
 .panel-kicker {
-  fill: #668094;
+  fill: #7d91a2;
   font: 8px "DM Mono", monospace;
   letter-spacing: 0.14em;
 }
@@ -704,6 +704,16 @@ button {
   fill: none;
   stroke: var(--gold);
   stroke-dasharray: 6 5;
+}
+
+.magnetic-inset > rect {
+  fill: rgba(7, 16, 27, 0.94);
+  stroke: rgba(255, 209, 102, 0.26);
+}
+
+.magnetic-inset > text:not(.panel-kicker) {
+  fill: var(--gold);
+  font: 8px "DM Mono", monospace;
 }
 
 .bz-boundary {
@@ -773,7 +783,7 @@ button {
 }
 
 .surface-hint {
-  color: #607789;
+  color: #7d91a2;
   font: 8px "DM Mono", monospace;
 }
 
@@ -842,7 +852,7 @@ footer {
   justify-content: space-between;
   gap: 20px;
   border-top: 1px solid var(--line);
-  color: #566b7b;
+  color: #71879a;
   font: 8px "DM Mono", monospace;
 }
 

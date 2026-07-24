@@ -1,0 +1,196 @@
+{
+  "status": "pass",
+  "analytic_square_dispersion_max_error": 0.0,
+  "families": [
+    {
+      "lattice": "square",
+      "butterfly_states": 42,
+      "finite_butterfly": true,
+      "adapter_max_energy_error": 0.0,
+      "adapter_chern_exact": true,
+      "band_grid_shape": [
+        3,
+        7,
+        7
+      ],
+      "finite_energy_and_berry": true,
+      "topological_groups": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          -2
+        ],
+        [
+          2,
+          1,
+          1
+        ]
+      ],
+      "group_cherns_stable_7_to_11": true,
+      "complete_bundle_chern": 0,
+      "reciprocal_duality_error": 0.0,
+      "brillouin_vertices": 4,
+      "brillouin_area_error": 1.7763568394002505e-15
+    },
+    {
+      "lattice": "triangular",
+      "butterfly_states": 42,
+      "finite_butterfly": true,
+      "adapter_max_energy_error": 0.0,
+      "adapter_chern_exact": true,
+      "band_grid_shape": [
+        3,
+        7,
+        7
+      ],
+      "finite_energy_and_berry": true,
+      "topological_groups": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          1,
+          -2
+        ]
+      ],
+      "group_cherns_stable_7_to_11": true,
+      "complete_bundle_chern": 0,
+      "reciprocal_duality_error": 2.2218928846954427e-16,
+      "brillouin_vertices": 6,
+      "brillouin_area_error": 9.769962616701378e-15
+    },
+    {
+      "lattice": "honeycomb",
+      "butterfly_states": 84,
+      "finite_butterfly": true,
+      "adapter_max_energy_error": 0.0,
+      "adapter_chern_exact": true,
+      "band_grid_shape": [
+        6,
+        7,
+        7
+      ],
+      "finite_energy_and_berry": true,
+      "topological_groups": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          -2
+        ],
+        [
+          2,
+          2,
+          2
+        ],
+        [
+          4,
+          1,
+          -2
+        ],
+        [
+          5,
+          1,
+          1
+        ]
+      ],
+      "group_cherns_stable_7_to_11": true,
+      "complete_bundle_chern": 0,
+      "reciprocal_duality_error": 1.4989425472574787e-15,
+      "brillouin_vertices": 6,
+      "brillouin_area_error": 7.993605777301127e-15
+    },
+    {
+      "lattice": "kagome",
+      "butterfly_states": 126,
+      "finite_butterfly": true,
+      "adapter_max_energy_error": 0.0,
+      "adapter_chern_exact": true,
+      "band_grid_shape": [
+        9,
+        7,
+        7
+      ],
+      "finite_energy_and_berry": true,
+      "topological_groups": [
+        [
+          0,
+          1,
+          -1
+        ],
+        [
+          1,
+          1,
+          2
+        ],
+        [
+          2,
+          3,
+          0
+        ],
+        [
+          5,
+          1,
+          2
+        ],
+        [
+          6,
+          2,
+          -2
+        ],
+        [
+          8,
+          1,
+          -1
+        ]
+      ],
+      "group_cherns_stable_7_to_11": true,
+      "complete_bundle_chern": 0,
+      "reciprocal_duality_error": 1.4989425472574787e-15,
+      "brillouin_vertices": 6,
+      "brillouin_area_error": 7.993605777301127e-15
+    },
+    {
+      "lattice": "bravais",
+      "butterfly_states": 42,
+      "finite_butterfly": true,
+      "adapter_max_energy_error": 0.0,
+      "adapter_chern_exact": true,
+      "band_grid_shape": [
+        3,
+        7,
+        7
+      ],
+      "finite_energy_and_berry": true,
+      "topological_groups": [
+        [
+          0,
+          3,
+          0
+        ]
+      ],
+      "group_cherns_stable_7_to_11": true,
+      "complete_bundle_chern": 0,
+      "reciprocal_duality_error": 2.0636121862096804e-15,
+      "brillouin_vertices": 6,
+      "brillouin_area_error": 1.1546319456101628e-14
+    }
+  ]
+}

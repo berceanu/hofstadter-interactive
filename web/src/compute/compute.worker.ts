@@ -30,6 +30,8 @@ interface PythonBands {
   energy: Float64Array;
   berry: Float64Array;
   chern: Int32Array;
+  group_start: Int32Array;
+  group_size: Int32Array;
   path_x: Float64Array;
   path_energy: Float64Array;
   path_ticks: Float64Array;
@@ -203,6 +205,8 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       energy: new Float64Array(result.energy),
       berry: new Float64Array(result.berry),
       chern: new Int32Array(result.chern),
+      groupStart: new Int32Array(result.group_start),
+      groupSize: new Int32Array(result.group_size),
       pathX: new Float64Array(result.path_x),
       pathEnergy: new Float64Array(result.path_energy),
       pathTicks: new Float64Array(result.path_ticks),
@@ -214,6 +218,8 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       bands.energy.buffer,
       bands.berry.buffer,
       bands.chern.buffer,
+      bands.groupStart.buffer,
+      bands.groupSize.buffer,
       bands.pathX.buffer,
       bands.pathEnergy.buffer,
       bands.pathTicks.buffer,

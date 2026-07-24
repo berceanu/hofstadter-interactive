@@ -63,7 +63,9 @@ export function exportCsv(
       }
     }
   } else if (view === "bands" && bands) {
-    rows.push("band,k1_index,k2_index,energy,berry_flux,chern");
+    rows.push(
+      "band,k1_index,k2_index,energy,berry_flux,chern,group_start,group_size",
+    );
     for (let band = 0; band < bands.bands; band += 1) {
       for (let ix = 0; ix < bands.samples; ix += 1) {
         for (let iy = 0; iy < bands.samples; iy += 1) {
@@ -77,6 +79,8 @@ export function exportCsv(
               bands.energy[index],
               bands.berry[index],
               bands.chern[band],
+              bands.groupStart[band],
+              bands.groupSize[band],
             ].join(","),
           );
         }
@@ -146,6 +150,8 @@ export function exportNpz(
       energy: npy(bands.energy),
       berry_flux: npy(bands.berry),
       chern: npy(bands.chern),
+      group_start: npy(bands.groupStart),
+      group_size: npy(bands.groupSize),
       path_x: npy(bands.pathX),
       path_energy: npy(bands.pathEnergy),
     });

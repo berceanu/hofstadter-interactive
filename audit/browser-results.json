@@ -1,0 +1,253 @@
+{
+  "status": "pass-after-remediation",
+  "baseline_findings": [
+    {
+      "severity": "high",
+      "finding": "Flux numerator remained 10 after q was reduced to 3.",
+      "evidence": "φ = 10/3 and URL p=10&q=3",
+      "resolution": "Central parameter normalization now enforces 1 ≤ p < q."
+    },
+    {
+      "severity": "high",
+      "finding": "A zero Bravais angle denominator reached Pyodide and exposed a ZeroDivisionError traceback.",
+      "evidence": "phase-error with td=0",
+      "resolution": "Angle and scalar bounds are normalized before URL writing or computation."
+    },
+    {
+      "severity": "high",
+      "finding": "The lattice view labeled a reciprocal primitive parallelogram as the first Brillouin zone and drew q·a₂ outside the SVG panel.",
+      "evidence": "triangular q=11 used four reciprocal edges; square magnetic path reached y=-538 outside viewBox",
+      "resolution": "The adapter now constructs the reciprocal Wigner–Seitz cell and the UI uses a bounded magnetic-cell inset with equal spatial scale."
+    },
+    {
+      "severity": "high",
+      "finding": "Individual Berry/Chern values were shown for touching Kagome and honeycomb bands.",
+      "evidence": "Kagome individual Chern sums varied with momentum sampling.",
+      "resolution": "Touching bands are grouped with the non-Abelian projector formulation already present upstream; grouped Chern values are stable and the complete bundle sums to zero."
+    },
+    {
+      "severity": "medium",
+      "finding": "Cancelled computations could later overwrite “Computation cancelled” with a completion state.",
+      "resolution": "ComputeEngine now throws a cancellation terminal and clears worker cancellation bookkeeping."
+    }
+  ],
+  "final_checks": [
+    {
+      "scenario": "spatial-index-hover",
+      "status": "pass",
+      "detail": "SELECTED STATE\nφ = 1/11\nENERGY\n-3.918855\nBAND\n1\nCHERN\n1"
+    },
+    {
+      "scenario": "pan-zoom-physical-axes",
+      "status": "pass",
+      "before": [
+        "0.00",
+        "0.20",
+        "0.40",
+        "0.60",
+        "0.80",
+        "1.00",
+        "-3.0",
+        "-2.0",
+        "-1.0",
+        "0.0",
+        "1.0",
+        "2.0",
+        "3.0"
+      ],
+      "zoomed": [
+        "0.20",
+        "0.30",
+        "0.40",
+        "0.50",
+        "0.60",
+        "0.70",
+        "0.80",
+        "-2.0",
+        "-1.0",
+        "0.0",
+        "1.0",
+        "2.0"
+      ],
+      "panned": [
+        "0.20",
+        "0.30",
+        "0.40",
+        "0.50",
+        "0.60",
+        "0.70",
+        "-2.0",
+        "-1.0",
+        "0.0",
+        "1.0",
+        "2.0"
+      ]
+    },
+    {
+      "scenario": "triangular-lattice-view",
+      "status": "pass",
+      "detail": {
+        "bz": "M589.7124040525614,137.6530153269396 L935.2875959474386,422.05675563886496 L935.2875959474386,370.3469846730603 L589.7124040525614,85.94324436113504 L589.7124040525614,137.6530153269396",
+        "label": "triangular real-space lattice and Brillouin zone",
+        "sites": 49
+      }
+    },
+    {
+      "scenario": "honeycomb-lattice",
+      "status": "pass",
+      "detail": {
+        "result": "98 sites",
+        "alphaEnabled": true,
+        "thetaEnabled": false
+      }
+    },
+    {
+      "scenario": "kagome-lattice-defaults",
+      "status": "pass",
+      "detail": {
+        "result": "147 sites",
+        "period": "8",
+        "url": "http://127.0.0.1:5173/?view=lattice&lat=kagome&p=1&q=11&t=1%2C0.15&alpha=1&tn=1&td=3&period=8&samp=9"
+      }
+    },
+    {
+      "scenario": "general-bravais-parameters",
+      "status": "pass",
+      "detail": {
+        "result": "49 sites",
+        "alphaEnabled": true,
+        "thetaEnabled": true,
+        "url": "http://127.0.0.1:5173/?view=lattice&lat=bravais&p=1&q=11&t=1%2C0.15&alpha=1.4&tn=67&td=180&period=1&samp=9"
+      }
+    },
+    {
+      "scenario": "linked-band-selection-and-berry",
+      "status": "pass",
+      "detail": {
+        "bandHeading": "Band 2 · Berry flux",
+        "chernBadge": "C = -2"
+      }
+    },
+    {
+      "scenario": "3d-orbit-drag",
+      "status": "pass",
+      "detail": {
+        "before": "922995382af6",
+        "after": "cbf7dc2b71b7",
+        "changed": true
+      }
+    },
+    {
+      "scenario": "copy-link",
+      "status": "pass",
+      "detail": {
+        "expected": "http://127.0.0.1:5173/?view=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+        "actual": "http://127.0.0.1:5173/?view=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+        "matches": true
+      }
+    },
+    {
+      "scenario": "parameter-normalization-final",
+      "status": "pass",
+      "detail": {
+        "p": "2",
+        "q": "3",
+        "td": "2",
+        "url": "http://127.0.0.1:5173/?view=lattice&lat=bravais&p=2&q=3&t=1&alpha=1.4&tn=1&td=2&period=1&samp=31",
+        "status": "Lattice geometry ready"
+      }
+    },
+    {
+      "scenario": "wigner-seitz-and-muc-inset-final",
+      "status": "pass",
+      "detail": {
+        "bzSegments": 6,
+        "label": "triangular real-space lattice and magnetic Brillouin zone",
+        "magneticPath": "M355.78990945726844,238 L367.5468603934935,238 L432.21009054273156,126 L420.4531396065065,126 L355.78990945726844,238",
+        "title": [
+          "Triangular lattice",
+          "Magnetic Brillouin zone"
+        ]
+      }
+    },
+    {
+      "scenario": "grouped-berry-final",
+      "status": "pass",
+      "detail": {
+        "heading": "Bands 3–5 · Berry flux",
+        "badge": "C3–5 = 0",
+        "selected": "3 · group 3–5 · Cg=0"
+      }
+    },
+    {
+      "scenario": "batch-cancellation-final",
+      "status": "pass",
+      "detail": {
+        "message": "Computation cancelled",
+        "states": "0 states",
+        "className": "runtime-status phase-idle"
+      }
+    },
+    {
+      "scenario": "q97-performance-final",
+      "status": "pass",
+      "detail": {
+        "status": "Computed locally in 6.23 s",
+        "states": "9,312 states"
+      }
+    },
+    {
+      "scenario": "responsive-mobile-final",
+      "status": "pass",
+      "detail": {
+        "innerWidth": 430,
+        "navOverflow": "auto",
+        "parameterColumns": "375px",
+        "scrollWidth": 415
+      }
+    },
+    {
+      "scenario": "semantic-accessibility-final",
+      "status": "pass",
+      "detail": {
+        "controls": 24,
+        "h1": 1,
+        "landmarks": {
+          "aside": 1,
+          "footer": 1,
+          "header": 1,
+          "main": 1,
+          "nav": 1
+        },
+        "liveRegions": 1,
+        "namedGraphics": 1,
+        "reducedMotionRule": true,
+        "unlabeled": []
+      }
+    }
+  ],
+  "additional_checks": [
+    {
+      "scenario": "wannier-gap-inspector",
+      "status": "pass",
+      "detail": "φ=1/11, IDOS=0.0909, gap=1.25, Hall tᵣ=1; 100 gaps rendered."
+    },
+    {
+      "scenario": "desktop-and-mobile-e2e",
+      "status": "pass",
+      "detail": "14 Playwright scenarios passed, including CSV, NPZ, and PNG downloads."
+    },
+    {
+      "scenario": "browser-console",
+      "status": "pass-with-upstream-note",
+      "detail": "No application errors; only the React Three Fiber dependency emitted the known THREE.Clock deprecation warning."
+    }
+  ],
+  "limitations": [
+    {
+      "check": "Keyboard focus traversal through the in-app browser control layer",
+      "result": "inconclusive",
+      "reason": "The browser control did not synthesize Tab focus changes; semantic labels, native focusability, visible outline CSS, reduced-motion handling, and mobile/desktop Playwright coverage were verified instead."
+    }
+  ]
+}

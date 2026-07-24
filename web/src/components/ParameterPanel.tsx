@@ -158,7 +158,7 @@ export function ParameterPanel() {
           <span>θ denominator</span>
           <input
             type="number"
-            min="1"
+            min="2"
             max="360"
             value={parameters.theta[1]}
             disabled={parameters.lattice !== "bravais"}

@@ -33,11 +33,16 @@ npm run python:test
 npm run test:pyodide
 npm run build
 npm run test:e2e
+npm run audit:report
 npm run benchmark
 ```
 
 The Vite base path defaults to `/hofstadter-interactive/` for GitHub Pages and
 can be changed with `VITE_BASE_PATH`.
+
+The latest comprehensive browser, physics, accessibility, and performance
+audit is published with the app at
+[`/audit/HH_INTERACTIVE_AUDIT.html`](public/audit/HH_INTERACTIVE_AUDIT.html).
 
 Measured on an Apple M-series laptop with Headless Chrome 149, the square
 q=97 workload rendered its first batch in 0.014 s and completed 9,312 states in

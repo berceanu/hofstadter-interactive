@@ -49,6 +49,8 @@ export interface BandResult {
   energy: Float64Array;
   berry: Float64Array;
   chern: Int32Array;
+  groupStart: Int32Array;
+  groupSize: Int32Array;
   pathX: Float64Array;
   pathEnergy: Float64Array;
   pathTicks: Float64Array;

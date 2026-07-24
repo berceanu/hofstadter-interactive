@@ -54,8 +54,16 @@ class ResultCache {
     });
   }
 
+  beginBands() {
+    this.publish({ ...this.snapshot, bands: undefined });
+  }
+
   setBands(result: BandResult) {
     this.publish({ ...this.snapshot, bands: result });
+  }
+
+  beginLattice() {
+    this.publish({ ...this.snapshot, lattice: undefined });
   }
 
   setLattice(result: LatticeResult) {

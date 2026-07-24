@@ -1,0 +1,70 @@
+{
+  "status": "pass",
+  "standard": "WCAG 2.2 AA normal text contrast",
+  "results": [
+    {
+      "name": "primary text",
+      "foreground": "#ecf3ee",
+      "background": "#07101b",
+      "ratio": 16.94,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "secondary labels",
+      "foreground": "#71879a",
+      "background": "#0c1826",
+      "ratio": 4.8,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "parameter help",
+      "foreground": "#71879a",
+      "background": "#091420",
+      "ratio": 4.97,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "interaction hint",
+      "foreground": "#7d91a2",
+      "background": "#08111d",
+      "ratio": 5.81,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "panel kicker",
+      "foreground": "#7d91a2",
+      "background": "#0b1724",
+      "ratio": 5.54,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "surface axes",
+      "foreground": "#6d8292",
+      "background": "#0b1724",
+      "ratio": 4.52,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "mint accent",
+      "foreground": "#5cf2ce",
+      "background": "#07101b",
+      "ratio": 13.69,
+      "minimum": 4.5,
+      "pass": true
+    },
+    {
+      "name": "gold data accent",
+      "foreground": "#ffd166",
+      "background": "#07101b",
+      "ratio": 13.25,
+      "minimum": 4.5,
+      "pass": true
+    }
+  ]
+}

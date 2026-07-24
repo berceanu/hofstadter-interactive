@@ -78,6 +78,8 @@ function BandCut() {
   if (!bands) return null;
 
   const energyRange = extent(bands.pathEnergy, [-4, 4]);
+  const selectedGroupStart = bands.groupStart[selectedBand] ?? selectedBand;
+  const selectedGroupSize = bands.groupSize[selectedBand] ?? 1;
   const xMax = bands.pathX[bands.pathX.length - 1] || 1;
   const x = scaleLinear().domain([0, xMax]).range([58, 713]);
   const y = scaleLinear().domain(energyRange).nice().range([454, 30]);
@@ -130,7 +132,12 @@ function BandCut() {
           <path
             key={band}
             d={path}
-            className={band === selectedBand ? "selected-band" : ""}
+            className={
+              band >= selectedGroupStart
+              && band < selectedGroupStart + selectedGroupSize
+                ? "selected-band"
+                : ""
+            }
             onClick={() => setSelectedBand(band)}
           />
         ))}
@@ -172,6 +179,10 @@ export function BandView() {
   const offset = Math.min(selectedBand, bands.bands - 1) * count;
   const source = metric === "energy" ? bands.energy : bands.berry;
   const surface = source.slice(offset, offset + count);
+  const groupStart = bands.groupStart[selectedBand] ?? selectedBand;
+  const groupSize = bands.groupSize[selectedBand] ?? 1;
+  const groupEnd = groupStart + groupSize;
+  const grouped = groupSize > 1;
 
   return (
     <div className="bands-layout">
@@ -181,7 +192,11 @@ export function BandView() {
             <span className="eyebrow">SYMMETRY CUT</span>
             <h2>Linked band structure</h2>
           </div>
-          <span className="chern-badge">C = {bands.chern[selectedBand] ?? 0}</span>
+          <span className="chern-badge">
+            {grouped
+              ? `C${groupStart + 1}–${groupEnd} = ${bands.chern[selectedBand] ?? 0}`
+              : `C = ${bands.chern[selectedBand] ?? 0}`}
+          </span>
         </div>
         <BandCut />
       </section>
@@ -190,7 +205,10 @@ export function BandView() {
           <div>
             <span className="eyebrow">ROTATABLE SURFACE</span>
             <h2>
-              Band {selectedBand + 1} · {metric === "energy" ? "E(k)" : "Berry flux"}
+              {metric === "berry" && grouped
+                ? `Bands ${groupStart + 1}–${groupEnd}`
+                : `Band ${selectedBand + 1}`}{" "}
+              · {metric === "energy" ? "E(k)" : "Berry flux"}
             </h2>
           </div>
           <span className="surface-hint">drag to rotate</span>

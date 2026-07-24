@@ -42,6 +42,91 @@ def _band_cherns(model: Hofstadter, band_count: int) -> np.ndarray:
     return np.zeros(band_count, dtype=np.int32)
 
 
+def _gauss_reduce_2d(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return a short 2D lattice basis suitable for Voronoi construction."""
+
+    first = np.asarray(vectors[0], dtype=np.float64).copy()
+    second = np.asarray(vectors[1], dtype=np.float64).copy()
+    for _ in range(64):
+        if np.dot(second, second) < np.dot(first, first):
+            first, second = second, first
+        denominator = float(np.dot(first, first))
+        if denominator <= 1e-18:
+            raise ValueError("Degenerate reciprocal lattice basis.")
+        multiple = int(np.rint(np.dot(first, second) / denominator))
+        if multiple == 0:
+            return first, second
+        second = second - multiple * first
+    raise ValueError("Unable to reduce the reciprocal lattice basis.")
+
+
+def _clip_half_plane(
+    polygon: list[np.ndarray],
+    normal: np.ndarray,
+    offset: float,
+) -> list[np.ndarray]:
+    """Clip a convex polygon to ``point · normal <= offset``."""
+
+    if not polygon:
+        return []
+    clipped: list[np.ndarray] = []
+    previous = polygon[-1]
+    previous_value = float(np.dot(previous, normal) - offset)
+    for current in polygon:
+        current_value = float(np.dot(current, normal) - offset)
+        previous_inside = previous_value <= 1e-10
+        current_inside = current_value <= 1e-10
+        if previous_inside != current_inside:
+            direction = current - previous
+            denominator = float(np.dot(direction, normal))
+            if abs(denominator) > 1e-15:
+                fraction = (offset - float(np.dot(previous, normal))) / denominator
+                clipped.append(previous + fraction * direction)
+        if current_inside:
+            clipped.append(current)
+        previous = current
+        previous_value = current_value
+    return clipped
+
+
+def _wigner_seitz_cell(reciprocal: np.ndarray) -> np.ndarray:
+    """Construct the first Brillouin zone as a reciprocal Voronoi cell."""
+
+    first, second = _gauss_reduce_2d(reciprocal)
+    radius = 2.5 * (np.linalg.norm(first) + np.linalg.norm(second))
+    polygon = [
+        np.array([-radius, -radius], dtype=np.float64),
+        np.array([radius, -radius], dtype=np.float64),
+        np.array([radius, radius], dtype=np.float64),
+        np.array([-radius, radius], dtype=np.float64),
+    ]
+    neighbors = []
+    for first_index in range(-3, 4):
+        for second_index in range(-3, 4):
+            if first_index == 0 and second_index == 0:
+                continue
+            vector = first_index * first + second_index * second
+            neighbors.append(vector)
+    neighbors.sort(key=lambda vector: float(np.dot(vector, vector)))
+    for neighbor in neighbors:
+        polygon = _clip_half_plane(
+            polygon,
+            neighbor,
+            float(np.dot(neighbor, neighbor)) / 2,
+        )
+        if not polygon:
+            raise ValueError("Unable to construct the Brillouin zone.")
+
+    vertices: list[np.ndarray] = []
+    for vertex in polygon:
+        if not vertices or np.linalg.norm(vertex - vertices[-1]) > 1e-9:
+            vertices.append(vertex)
+    if len(vertices) > 1 and np.linalg.norm(vertices[0] - vertices[-1]) < 1e-9:
+        vertices.pop()
+    vertices.append(vertices[0].copy())
+    return np.asarray(vertices, dtype=np.float64)
+
+
 def compute_butterfly_batch(
     parameters: dict[str, Any], p_start: int, p_end: int
 ) -> dict[str, np.ndarray]:
@@ -122,22 +207,7 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
             values[:, ix, iy] = np.real(eigvals[order])
             vectors[:, :, ix, iy] = eigvecs[:, order]
 
-    berry = np.zeros_like(values)
-    for band in range(band_count):
-        for ix in range(samples - 1):
-            for iy in range(samples - 1):
-                berry[band, ix, iy] = band_functions.berry_curv(
-                    vectors, band, ix, iy
-                )
-        berry[band, -1, :-1] = berry[band, 0, :-1]
-        berry[band, :-1, -1] = berry[band, :-1, 0]
-        berry[band, -1, -1] = berry[band, 0, 0]
-
-    chern_numbers = np.rint(
-        np.sum(berry[:, :-1, :-1], axis=(1, 2)) / (2 * np.pi)
-    ).astype(np.int32)
-
-    points_per_segment = max(8, samples)
+    points_per_segment = max(24, samples)
     path_blocks: list[np.ndarray] = []
     path_coordinates: list[np.ndarray] = []
     tick_positions: list[float] = []
@@ -164,6 +234,50 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         tick_positions.append(float(cursor))
         cursor += points_per_segment
     tick_positions.append(float(cursor))
+    path_matrix = np.hstack(path_blocks)
+
+    band_gaps = (
+        np.min(values[1:], axis=(1, 2))
+        - np.max(values[:-1], axis=(1, 2))
+        if band_count > 1
+        else np.empty(0, dtype=np.float64)
+    )
+    if band_count > 1:
+        band_gaps = np.minimum(
+            band_gaps,
+            np.min(path_matrix[1:] - path_matrix[:-1], axis=1),
+        )
+    groups: list[tuple[int, int]] = []
+    group_start = 0
+    for band, gap in enumerate(band_gaps):
+        if gap > 0.01:
+            groups.append((group_start, band + 1))
+            group_start = band + 1
+    groups.append((group_start, band_count))
+
+    berry = np.zeros_like(values)
+    chern_numbers = np.zeros(band_count, dtype=np.int32)
+    group_starts = np.zeros(band_count, dtype=np.int32)
+    group_sizes = np.ones(band_count, dtype=np.int32)
+    for start, end in groups:
+        size = end - start
+        group_berry = np.zeros((samples, samples), dtype=np.float64)
+        for ix in range(samples - 1):
+            for iy in range(samples - 1):
+                group_berry[ix, iy] = band_functions.berry_curv(
+                    vectors, start, ix, iy, size
+                )
+        group_berry[-1, :-1] = group_berry[0, :-1]
+        group_berry[:-1, -1] = group_berry[:-1, 0]
+        group_berry[-1, -1] = group_berry[0, 0]
+        group_chern = int(
+            np.rint(np.sum(group_berry[:-1, :-1]) / (2 * np.pi))
+        )
+        for band in range(start, end):
+            berry[band] = group_berry
+            chern_numbers[band] = group_chern
+            group_starts[band] = start
+            group_sizes[band] = size
 
     labels = [
         label.replace("$", "").replace("\\Gamma", "Γ")
@@ -176,8 +290,10 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "energy": np.ascontiguousarray(values).ravel(),
         "berry": np.ascontiguousarray(berry).ravel(),
         "chern": chern_numbers,
+        "group_start": group_starts,
+        "group_size": group_sizes,
         "path_x": np.concatenate(path_coordinates),
-        "path_energy": np.ascontiguousarray(np.hstack(path_blocks)).ravel(),
+        "path_energy": np.ascontiguousarray(path_matrix).ravel(),
         "path_ticks": np.asarray(tick_positions, dtype=np.float64),
         "path_labels": labels,
         "reciprocal": np.ascontiguousarray(reciprocal, dtype=np.float64).ravel(),
@@ -243,17 +359,7 @@ def compute_lattice(parameters: dict[str, Any]) -> dict[str, Any]:
     unit_cell = np.asarray(
         [[0.0, 0.0], a1, a1 + a2, a2, [0.0, 0.0]], dtype=np.float64
     )
-    b1, b2 = reciprocal
-    bz = np.asarray(
-        [
-            -0.5 * b1 - 0.5 * b2,
-            0.5 * b1 - 0.5 * b2,
-            0.5 * b1 + 0.5 * b2,
-            -0.5 * b1 + 0.5 * b2,
-            -0.5 * b1 - 0.5 * b2,
-        ],
-        dtype=np.float64,
-    )
+    bz = _wigner_seitz_cell(reciprocal)
     magnetic_cell = np.asarray(
         [[0.0, 0.0], a1, a1 + model.q * a2, model.q * a2, [0.0, 0.0]],
         dtype=np.float64,
