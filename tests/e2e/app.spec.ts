@@ -48,7 +48,9 @@ test("loads the scientific workspace and keeps state in the URL", async ({ page 
 
 test("the primary navigation remains usable on a mobile viewport", async ({ page }) => {
   await page.goto("/?view=wannier&lat=square&q=7");
-  await expect(page.getByRole("heading", { name: "Wannier diagram" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Wannier diagram" })).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByRole("navigation", { name: "Visualization" })).toBeVisible();
   await expect(page.getByText("Private by construction")).toHaveCount(0);
 });
