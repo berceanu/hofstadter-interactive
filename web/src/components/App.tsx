@@ -3,7 +3,11 @@ import { BandView } from "./BandView";
 import { ButterflyPlot } from "./ButterflyPlot";
 import { LatticeView } from "./LatticeView";
 import { ParameterPanel } from "./ParameterPanel";
-import { cancelActiveComputation, useCompute } from "../compute/useCompute";
+import {
+  cancelActiveComputation,
+  retryComputeEngine,
+  useCompute,
+} from "../compute/useCompute";
 import type { ViewKind } from "../compute/contracts";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
@@ -38,6 +42,14 @@ function RuntimeStatus() {
             </button>
           )}
         </>
+      )}
+      {progress.phase === "error" && (
+        <button
+          className="cancel-button"
+          onClick={() => void retryComputeEngine()}
+        >
+          retry engine
+        </button>
       )}
     </div>
   );
@@ -74,7 +86,10 @@ function SelectionReadout() {
             <div><dt>Band</dt><dd>{point.band + 1}</dd></div>
           </>
         )}
-        <div><dt>{view === "wannier" ? "Hall tᵣ" : "Chern"}</dt><dd>{point.chern}</dd></div>
+        <div>
+          <dt>{view === "wannier" ? "Hall tᵣ" : "Chern"}</dt>
+          <dd>{point.topologyAvailable === false ? "N/A" : point.chern}</dd>
+        </div>
       </dl>
     </div>
   );
@@ -97,6 +112,8 @@ export default function App() {
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const parameters = useAppStore((state) => state.parameters);
   const cache = useResultCache();
+  const butterflyTopologyAvailable =
+    cache.butterfly?.chunks[0]?.topologyAvailable ?? true;
   const exportRoot = useRef<HTMLElement>(null);
   const butterfly = useMemo(
     () => flattenButterfly(cache.butterfly),
@@ -106,6 +123,16 @@ export default function App() {
   useEffect(() => {
     document.title = `${views.find((item) => item.id === view)?.label} · Harper / Hofstadter`;
   }, [view]);
+
+  useEffect(() => {
+    if (!butterflyTopologyAvailable && colorMode === "chern") {
+      setColorMode("spectral");
+    }
+  }, [
+    butterflyTopologyAvailable,
+    colorMode,
+    setColorMode,
+  ]);
 
   return (
     <div className="app-shell">
@@ -168,10 +195,20 @@ export default function App() {
                     Energy
                   </button>
                   <button
-                    className={colorMode === "chern" ? "active" : ""}
+                    className={
+                      colorMode === "chern" && butterflyTopologyAvailable
+                        ? "active"
+                        : ""
+                    }
                     onClick={() => setColorMode("chern")}
+                    disabled={!butterflyTopologyAvailable}
+                    title={
+                      butterflyTopologyAvailable
+                        ? "Color states by Diophantine Chern number"
+                        : "Fast Diophantine coloring is unavailable for this model"
+                    }
                   >
-                    Chern
+                    {butterflyTopologyAvailable ? "Chern" : "Chern unavailable"}
                   </button>
                 </div>
               )}

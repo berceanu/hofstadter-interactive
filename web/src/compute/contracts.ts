@@ -23,6 +23,7 @@ export interface ScientificParameters {
 
 export interface ButterflyChunk {
   requestId: string;
+  topologyAvailable: boolean;
   flux: Float64Array;
   energy: Float64Array;
   band: Int32Array;
@@ -52,6 +53,8 @@ export interface BandResult {
   groupStart: Int32Array;
   groupSize: Int32Array;
   pathX: Float64Array;
+  pathK1: Float64Array;
+  pathK2: Float64Array;
   pathEnergy: Float64Array;
   pathTicks: Float64Array;
   pathLabels: string[];
@@ -68,7 +71,9 @@ export interface LatticeResult {
   magneticCell: Float64Array;
   latticeVectors: Float64Array;
   reciprocalVectors: Float64Array;
+  ordinaryReciprocalVectors: Float64Array;
   bz: Float64Array;
+  ordinaryBz: Float64Array;
   basisCount: number;
 }
 

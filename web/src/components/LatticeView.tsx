@@ -60,11 +60,13 @@ export function LatticeView() {
   );
   const x = localProjection.x;
   const y = localProjection.y;
-  const bzPoints = pairs(lattice.bz);
-  const reciprocalVectors = pairs(lattice.reciprocalVectors);
+  const magneticBzPoints = pairs(lattice.bz);
+  const ordinaryBzPoints = pairs(lattice.ordinaryBz);
+  const reciprocalVectors = pairs(lattice.ordinaryReciprocalVectors);
   const reciprocalProjection = equalAspectProjection(
     [
-      ...bzPoints,
+      ...ordinaryBzPoints,
+      ...magneticBzPoints,
       [0, 0],
       ...reciprocalVectors.map(
         ([vx, vy]) => [vx * 0.42, vy * 0.42] as [number, number],
@@ -85,7 +87,7 @@ export function LatticeView() {
         className="lattice-svg"
         viewBox="0 0 1000 550"
         role="img"
-        aria-label={`${latticeName} real-space lattice and magnetic Brillouin zone`}
+        aria-label={`${latticeName} real-space lattice with ordinary and magnetic Brillouin zones`}
         data-export-layer
       >
         <defs>
@@ -117,7 +119,7 @@ export function LatticeView() {
           {latticeName[0].toUpperCase() + latticeName.slice(1)} lattice
         </text>
         <text x="534" y="78" className="panel-title">
-          Magnetic Brillouin zone
+          Brillouin zones · magnetic folding ×{parameters.q}
         </text>
         <g className="hopping-links">
           {Array.from({ length: lattice.links.length / 6 }, (_, index) => {
@@ -178,7 +180,14 @@ export function LatticeView() {
             className="magnetic-cell"
           />
         </g>
-        <path d={pathFrom(bzPoints, bx, by)} className="bz-boundary" />
+        <path
+          d={pathFrom(ordinaryBzPoints, bx, by)}
+          className="bz-boundary"
+        />
+        <path
+          d={pathFrom(magneticBzPoints, bx, by)}
+          className="magnetic-bz-boundary"
+        />
         {reciprocalVectors.map(([vx, vy], index) => (
           <g key={`b-${index}`}>
             <line
@@ -194,7 +203,7 @@ export function LatticeView() {
               y={by(vy * 0.42) - 8}
               className="vector-label"
             >
-              bᴹ{index + 1}
+              b{index + 1}
             </text>
           </g>
         ))}
@@ -204,8 +213,24 @@ export function LatticeView() {
         </text>
         <g className="lattice-legend">
           <line x1="48" x2="76" y1="495" y2="495" className="unit-cell" />
-          <text x="84" y="500">ordinary cell</text>
+          <text x="84" y="500">
+            {lattice.basisCount > 1
+              ? `${lattice.basisCount}-site primitive cell`
+              : "primitive cell"}
+          </text>
           <text x="190" y="500">equal spatial scale · MUC shown in inset</text>
+        </g>
+        <g className="bz-legend">
+          <line x1="548" x2="576" y1="498" y2="498" className="bz-boundary" />
+          <text x="584" y="502">ordinary BZ</text>
+          <line
+            x1="694"
+            x2="722"
+            y1="498"
+            y2="498"
+            className="magnetic-bz-boundary"
+          />
+          <text x="730" y="502">magnetic BZ (folded ×{parameters.q})</text>
         </g>
       </svg>
     </div>

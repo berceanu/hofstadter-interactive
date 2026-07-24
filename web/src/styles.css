@@ -377,6 +377,12 @@ button {
   background: var(--mint);
 }
 
+.segmented button:disabled {
+  color: #607585;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .band-select {
   display: flex;
   align-items: center;
@@ -472,6 +478,8 @@ button {
   inset: 4% 3% 9% 8%;
   cursor: crosshair;
   touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
 }
 
 .plot-stage:active {
@@ -500,6 +508,18 @@ button {
   vector-effect: non-scaling-stroke;
 }
 
+.flux-marker line {
+  stroke: var(--gold);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.flux-marker text {
+  fill: var(--gold);
+  font: 8px "DM Mono", monospace;
+}
+
 .plot-ticks text,
 .axis-label {
   fill: #91a3b0;
@@ -517,6 +537,71 @@ button {
   color: #7d91a2;
   font: 8px "DM Mono", monospace;
   letter-spacing: 0.04em;
+}
+
+.plot-reset {
+  position: absolute;
+  right: 20px;
+  bottom: 16px;
+  z-index: 3;
+  border: 1px solid #294054;
+  border-radius: 5px;
+  background: rgba(10, 22, 34, 0.9);
+  color: #91a3b0;
+  padding: 5px 8px;
+  font: 8px "DM Mono", monospace;
+  cursor: pointer;
+}
+
+.plot-reset:hover {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+
+.plot-legend {
+  position: absolute;
+  top: 16px;
+  left: 92px;
+  z-index: 3;
+  width: 188px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 5px 8px;
+  color: #a9bac5;
+  font: 8px "DM Mono", monospace;
+  pointer-events: none;
+}
+
+.plot-legend > i {
+  height: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.plot-legend > small {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  color: #7d91a2;
+  font: 7px "DM Mono", monospace;
+}
+
+.plot-legend b {
+  font-weight: 400;
+}
+
+.plot-legend em {
+  grid-column: 2;
+  color: #7d91a2;
+  font-style: normal;
+}
+
+.plot-legend.unavailable {
+  width: auto;
+  max-width: 290px;
+  display: block;
+  color: var(--gold);
 }
 
 .plot-empty,
@@ -700,6 +785,14 @@ button {
   stroke-width: 1.8;
 }
 
+.magnetic-bz-boundary {
+  fill: rgba(255, 209, 102, 0.04);
+  stroke: var(--gold);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+}
+
 .magnetic-cell {
   fill: none;
   stroke: var(--gold);
@@ -740,6 +833,11 @@ button {
 }
 
 .lattice-legend text {
+  fill: #728798;
+  font: 8px "DM Mono", monospace;
+}
+
+.bz-legend text {
   fill: #728798;
   font: 8px "DM Mono", monospace;
 }
@@ -790,6 +888,8 @@ button {
 .band-cut {
   width: 100%;
   height: calc(100% - 70px);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .band-grid line {
@@ -816,6 +916,23 @@ button {
   stroke-width: 2.4;
 }
 
+.momentum-marker {
+  pointer-events: none;
+}
+
+.momentum-marker line {
+  stroke: var(--gold);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.momentum-marker circle {
+  fill: #fff3b0;
+  stroke: #ff9f43;
+  stroke-width: 2;
+}
+
 .path-labels text {
   fill: #8397a5;
   font: 9px "DM Mono", monospace;
@@ -833,7 +950,7 @@ button {
 }
 
 .surface-canvas {
-  height: calc(100% - 100px);
+  height: calc(100% - 142px);
 }
 
 .surface-axes {
@@ -842,6 +959,31 @@ button {
   justify-content: space-around;
   color: #6d8292;
   font: 8px "DM Mono", monospace;
+}
+
+.surface-legend {
+  height: 18px;
+  padding: 0 18px;
+  display: grid;
+  grid-template-columns: auto minmax(90px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: #8296a5;
+  font: 7px "DM Mono", monospace;
+}
+
+.surface-legend i {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b69ff, #62e7c8, #ffd166);
+}
+
+.surface-note {
+  height: 24px;
+  margin: 0;
+  padding: 3px 18px 0;
+  color: #8ea2b1;
+  font: 7px/1.4 "DM Mono", monospace;
 }
 
 footer {
@@ -869,6 +1011,18 @@ footer a {
 }
 
 @media (max-width: 1120px) {
+  .interaction-hint {
+    display: none;
+  }
+
+  .bottom-deck {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-stats {
+    grid-column: 1 / -1;
+  }
+
   .topbar {
     grid-template-columns: 1fr auto;
   }
@@ -961,6 +1115,10 @@ footer a {
 
   .bottom-deck {
     grid-template-columns: 1fr;
+  }
+
+  .result-stats {
+    grid-column: auto;
   }
 
   .selection-card {

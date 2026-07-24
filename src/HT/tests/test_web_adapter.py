@@ -80,10 +80,86 @@ def test_band_and_lattice_contracts_are_finite():
     assert bands["chern"].shape == (3,)
     assert bands["group_start"].shape == (3,)
     assert bands["group_size"].shape == (3,)
+    assert bands["path_k1"].shape == bands["path_x"].shape
+    assert bands["path_k2"].shape == bands["path_x"].shape
     assert lattice["sites"].size > 0
     assert lattice["bz"].ndim == 1
     assert lattice["bz"].size >= 10
     assert lattice["bz"].size % 2 == 0
+    assert lattice["ordinary_bz"].size >= 10
+    assert lattice["ordinary_reciprocal_vectors"].shape == (4,)
+
+
+def test_honeycomb_has_threefold_coordination_and_graphene_limits():
+    model = Hofstadter(0, 1, lat="honeycomb")
+    reciprocal = model.unit_cell()[3]
+    gamma = np.linalg.eigvalsh(model.hamiltonian(np.array([0.0, 0.0])))
+    corner = np.linalg.eigvalsh(
+        model.hamiltonian(np.matmul(np.array([2 / 3, 1 / 3]), reciprocal))
+    )
+    assert np.allclose(gamma, [-3.0, 3.0], rtol=0, atol=1e-12)
+    assert np.allclose(corner, [0.0, 0.0], rtol=0, atol=1e-12)
+
+    parameters = {
+        "lattice": "honeycomb",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 3],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 4,
+    }
+    lattice = compute_lattice(parameters)
+    sites = lattice["sites"].reshape(-1, 2)
+    links = lattice["links"].reshape(-1, 6)
+    origin_index = int(np.argmin(np.linalg.norm(sites, axis=1)))
+    origin = sites[origin_index]
+    neighbors = []
+    for link in links:
+        if np.allclose(link[:2], origin, rtol=0, atol=1e-10):
+            neighbors.append(link[2:4])
+        elif np.allclose(link[2:4], origin, rtol=0, atol=1e-10):
+            neighbors.append(link[:2])
+    assert len(neighbors) == 3
+    displacements = np.asarray(neighbors) - origin
+    assert np.allclose(
+        np.linalg.norm(displacements, axis=1),
+        np.full(3, 1 / np.sqrt(3)),
+        rtol=1e-10,
+        atol=1e-10,
+    )
+
+    butterfly = compute_butterfly_batch({**parameters, "q": 47}, 1, 47)
+    assert butterfly["energy"].min() < -2.9
+    assert butterfly["energy"].max() > 2.9
+
+
+@pytest.mark.parametrize(
+    "lattice,hoppings,period,expected",
+    [
+        ("square", [1.0], 1, True),
+        ("triangular", [1.0], 1, True),
+        ("honeycomb", [1.0], 1, True),
+        ("honeycomb", [1.0, 1.0], 6, False),
+        ("kagome", [1.0], 8, False),
+    ],
+)
+def test_butterfly_reports_diophantine_topology_availability(
+    lattice, hoppings, period, expected
+):
+    result = compute_butterfly_batch(
+        {
+            "lattice": lattice,
+            "hoppings": hoppings,
+            "period": period,
+            "theta": [1, 2] if lattice == "square" else [1, 3],
+            "alpha": 1.0,
+            "q": 5,
+        },
+        1,
+        5,
+    )
+    assert result["topology_available"] is expected
 
 
 @pytest.mark.parametrize("lattice,hoppings,period,theta", CASES)

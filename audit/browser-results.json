@@ -1,253 +1,232 @@
 {
   "status": "pass-after-remediation",
+  "review_verdict": {
+    "honeycomb_decoupled_chain_claim": "refuted",
+    "confirmed_findings_fixed": 14,
+    "summary": "The reported honeycomb failure was a false diagnosis; independent model, coordination, bandwidth, symmetry, and browser checks all pass. The renderer, worker recovery, legends, progressive display, interaction, topology-availability, BZ, Wannier, and linked-momentum findings were confirmed and repaired."
+  },
+  "friend_claims": [
+    {
+      "claim": "The honeycomb model is simulating decoupled zigzag chains.",
+      "verdict": "refuted",
+      "evidence": "Native Γ eigenvalues are exactly (-3, +3); K and K′ are zero-energy Dirac points; a bulk site has three equal-length nearest-neighbor bonds; q=47 spans [-2.961660, +2.961660] with 4,324 states and visible gaps. The browser lattice contains 133 links for its finite 98-site patch."
+    },
+    {
+      "claim": "The worker can enter an unrecoverable runtime-not-initialized state and wipes valid data.",
+      "verdict": "confirmed and fixed",
+      "evidence": "The engine now classifies lost-runtime/endpoint failures, recreates the worker, reinitializes Pyodide, and retries once. A deterministic unit test forces that exact failure. Completed butterfly, band, and lattice results remain visible until a replacement succeeds."
+    },
+    {
+      "claim": "Resizing can leave axes and one stray WebGL point.",
+      "verdict": "confirmed and fixed",
+      "evidence": "R3F was resetting the orthographic camera to a pixel frustum on resize. CameraSync now owns a manual physical frustum and responds to canvas size. q=97 retained all 9,312 states after resizing to 900 px; the WebGL regression asserts more than 500 non-background pixels."
+    },
+    {
+      "claim": "Butterfly batches do not render progressively.",
+      "verdict": "confirmed root cause and fixed",
+      "evidence": "The same camera reset made streamed points collapse visually. The driven q=97 capture shows 291 rendered states at 3% while computation is still running."
+    },
+    {
+      "claim": "Legends, a current-flux line, and a linked 3D momentum marker are missing.",
+      "verdict": "confirmed and fixed",
+      "evidence": "Energy, Chern (-10 to +10), Wannier gap-size/Hall, and 3D surface scales are present. Every sweep shows the current p/q line. Clicking k=(0.271, 0.500) on the cut moved both the SVG marker and the luminous 3D surface marker."
+    },
+    {
+      "claim": "Interaction and visualization polish is incomplete.",
+      "verdict": "confirmed and fixed",
+      "evidence": "Plain wheel/trackpad zoom works, pan is bounded, drag release does not inspect, double-click and a visible button reset the view, band SVG text cannot be selected, Wannier dot area follows gap width, and q-folded BZs are shown against the ordinary BZ."
+    }
+  ],
   "baseline_findings": [
     {
       "severity": "high",
-      "finding": "Flux numerator remained 10 after q was reduced to 3.",
-      "evidence": "φ = 10/3 and URL p=10&q=3",
-      "resolution": "Central parameter normalization now enforces 1 ≤ p < q."
+      "finding": "R3F resize reset the butterfly camera to a pixel-space frustum, collapsing progressive and resized point clouds.",
+      "evidence": "At 900 px the axes remained but the WebGL layer showed one point; incoming state counters continued to grow.",
+      "resolution": "The orthographic camera is manual, synchronized in a layout effect, and explicitly keyed to R3F canvas size."
     },
     {
       "severity": "high",
-      "finding": "A zero Bravais angle denominator reached Pyodide and exposed a ZeroDivisionError traceback.",
-      "evidence": "phase-error with td=0",
-      "resolution": "Angle and scalar bounds are normalized before URL writing or computation."
+      "finding": "A lost Pyodide worker/runtime had no automatic recovery and recomputation cleared the last valid plot.",
+      "evidence": "The failure string matched “The Python runtime is not initialized.”",
+      "resolution": "Recoverable worker failures trigger one clean worker recreation and retry; a retry control remains available and stale results stay visible."
     },
     {
       "severity": "high",
-      "finding": "The lattice view labeled a reciprocal primitive parallelogram as the first Brillouin zone and drew q·a₂ outside the SVG panel.",
-      "evidence": "triangular q=11 used four reciprocal edges; square magnetic path reached y=-538 outside viewBox",
-      "resolution": "The adapter now constructs the reciprocal Wigner–Seitz cell and the UI uses a bounded magnetic-cell inset with equal spatial scale."
+      "finding": "Unsupported fast Diophantine coloring for multi-basis butterfly models was displayed as physical C=0.",
+      "evidence": "Kagome and higher-neighbor honeycomb butterflies received zero-filled topology arrays.",
+      "resolution": "The adapter sends an explicit topology_available contract; the UI disables and labels Chern mode as unavailable and exports blank Chern cells."
+    },
+    {
+      "severity": "medium",
+      "finding": "Dense scientific plots lacked color semantics and linked reference markers.",
+      "resolution": "Added energy, Chern, Hall/gap-width, and surface color scales, a current-flux line, and a linked symmetry-cut/3D momentum marker."
+    },
+    {
+      "severity": "medium",
+      "finding": "Unbounded pan, drag-release inspection, missing reset behavior, and selectable band-axis text made plot interaction brittle.",
+      "resolution": "Pan bounds, drag suppression, plain wheel zoom, double-click/button reset, and SVG selection hygiene are now regression-covered."
+    },
+    {
+      "severity": "medium",
+      "finding": "Wannier gaps had uniform visual weight and large-q magnetic BZ labels collided in a to-scale sliver.",
+      "resolution": "Wannier point area/alpha now scales with gap width; the reciprocal panel leads with the ordinary BZ and overlays the q-folded magnetic BZ with a clear legend."
+    },
+    {
+      "severity": "medium",
+      "finding": "The three-column result deck overflowed the document by 26 px at a 900 px viewport.",
+      "evidence": "documentElement.scrollWidth=926 with innerWidth=900.",
+      "resolution": "The deck switches to a two-column layout below 1120 px and one column below 760 px; the final 900 px document has no horizontal overflow."
+    },
+    {
+      "severity": "high",
+      "finding": "Invalid p/q and zero angle denominators could reach Pyodide.",
+      "resolution": "Central parameter normalization enforces coprime-range scalar bounds before URL writing or computation."
+    },
+    {
+      "severity": "high",
+      "finding": "A reciprocal primitive parallelogram was labeled as the first Brillouin zone and q·a₂ escaped the SVG panel.",
+      "resolution": "The adapter constructs Wigner–Seitz cells for ordinary and magnetic reciprocal lattices; the magnetic real-space cell is a bounded inset."
     },
     {
       "severity": "high",
       "finding": "Individual Berry/Chern values were shown for touching Kagome and honeycomb bands.",
-      "evidence": "Kagome individual Chern sums varied with momentum sampling.",
-      "resolution": "Touching bands are grouped with the non-Abelian projector formulation already present upstream; grouped Chern values are stable and the complete bundle sums to zero."
+      "resolution": "Touching bands use the upstream non-Abelian determinant-link formulation and are labeled as gauge-invariant groups."
     },
     {
       "severity": "medium",
-      "finding": "Cancelled computations could later overwrite “Computation cancelled” with a completion state.",
-      "resolution": "ComputeEngine now throws a cancellation terminal and clears worker cancellation bookkeeping."
+      "finding": "Cancelled computations could later overwrite the terminal cancelled state.",
+      "resolution": "Cancellation is terminal locally and worker bookkeeping is cleared after every request."
     }
   ],
   "final_checks": [
     {
-      "scenario": "spatial-index-hover",
+      "scenario": "honeycomb-native-invariants",
       "status": "pass",
-      "detail": "SELECTED STATE\nφ = 1/11\nENERGY\n-3.918855\nBAND\n1\nCHERN\n1"
+      "detail": "Γ=(-3,+3), K=K′=(0,0), bulk coordination=3, q47 range=[-2.961660,+2.961660], chiral symmetry error=8.7e-15."
     },
     {
-      "scenario": "pan-zoom-physical-axes",
+      "scenario": "honeycomb-browser-lattice",
       "status": "pass",
-      "before": [
-        "0.00",
-        "0.20",
-        "0.40",
-        "0.60",
-        "0.80",
-        "1.00",
-        "-3.0",
-        "-2.0",
-        "-1.0",
-        "0.0",
-        "1.0",
-        "2.0",
-        "3.0"
-      ],
-      "zoomed": [
-        "0.20",
-        "0.30",
-        "0.40",
-        "0.50",
-        "0.60",
-        "0.70",
-        "0.80",
-        "-2.0",
-        "-1.0",
-        "0.0",
-        "1.0",
-        "2.0"
-      ],
-      "panned": [
-        "0.20",
-        "0.30",
-        "0.40",
-        "0.50",
-        "0.60",
-        "0.70",
-        "-2.0",
-        "-1.0",
-        "0.0",
-        "1.0",
-        "2.0"
-      ]
+      "detail": "98 sites, 133 rendered bonds, a rhombic two-site primitive cell, ordinary hexagonal BZ, and magnetic BZ."
     },
     {
-      "scenario": "triangular-lattice-view",
+      "scenario": "progressive-butterfly",
       "status": "pass",
-      "detail": {
-        "bz": "M589.7124040525614,137.6530153269396 L935.2875959474386,422.05675563886496 L935.2875959474386,370.3469846730603 L589.7124040525614,85.94324436113504 L589.7124040525614,137.6530153269396",
-        "label": "triangular real-space lattice and Brillouin zone",
-        "sites": 49
-      }
+      "detail": "291 square-lattice q=97 states were visibly rendered at 3% before completion."
     },
     {
-      "scenario": "honeycomb-lattice",
+      "scenario": "responsive-webgl-repaint",
       "status": "pass",
-      "detail": {
-        "result": "98 sites",
-        "alphaEnabled": true,
-        "thetaEnabled": false
-      }
+      "detail": "9,312 q=97 states remained populated after a 900 px resize; automated WebGL readback exceeded 500 foreground pixels."
     },
     {
-      "scenario": "kagome-lattice-defaults",
+      "scenario": "current-flux-marker",
       "status": "pass",
-      "detail": {
-        "result": "147 sites",
-        "period": "8",
-        "url": "http://127.0.0.1:5173/?view=lattice&lat=kagome&p=1&q=11&t=1%2C0.15&alpha=1&tn=1&td=3&period=8&samp=9"
-      }
+      "detail": "The sweep axes mark the current p/q and keep the label within the plotting frame."
     },
     {
-      "scenario": "general-bravais-parameters",
+      "scenario": "chern-color-scale",
       "status": "pass",
-      "detail": {
-        "result": "49 sites",
-        "alphaEnabled": true,
-        "thetaEnabled": true,
-        "url": "http://127.0.0.1:5173/?view=lattice&lat=bravais&p=1&q=11&t=1%2C0.15&alpha=1.4&tn=67&td=180&period=1&samp=9"
-      }
+      "detail": "A 21-step Chern scale labels -10, 0, and +10, matching the documented HofstadterTools default magnitude."
     },
     {
-      "scenario": "linked-band-selection-and-berry",
+      "scenario": "plain-wheel-zoom-and-reset",
       "status": "pass",
-      "detail": {
-        "bandHeading": "Band 2 · Berry flux",
-        "chernBadge": "C = -2"
-      }
+      "detail": "A plain wheel event changed physical tick domains without Ctrl; the reset button restored the initial domains."
     },
     {
-      "scenario": "3d-orbit-drag",
+      "scenario": "wannier-gap-weighting",
       "status": "pass",
-      "detail": {
-        "before": "922995382af6",
-        "after": "cbf7dc2b71b7",
-        "changed": true
-      }
+      "detail": "9,216 q=97 gaps use point area and alpha proportional to gap width, exposing the large Landau-fan trajectories."
     },
     {
-      "scenario": "copy-link",
+      "scenario": "ordinary-and-magnetic-bz",
       "status": "pass",
-      "detail": {
-        "expected": "http://127.0.0.1:5173/?view=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-        "actual": "http://127.0.0.1:5173/?view=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-        "matches": true
-      }
+      "detail": "Honeycomb q=89 shows a readable ordinary hexagonal BZ with the magnetic BZ overlaid and labeled folded ×89."
     },
     {
-      "scenario": "parameter-normalization-final",
+      "scenario": "linked-band-momentum",
       "status": "pass",
-      "detail": {
-        "p": "2",
-        "q": "3",
-        "td": "2",
-        "url": "http://127.0.0.1:5173/?view=lattice&lat=bravais&p=2&q=3&t=1&alpha=1.4&tn=1&td=2&period=1&samp=31",
-        "status": "Lattice geometry ready"
-      }
+      "detail": "Clicking the symmetry cut moved its marker to x=464.789 and updated the surface to k=(0.271,0.500); the 3D marker and drop line are visible."
     },
     {
-      "scenario": "wigner-seitz-and-muc-inset-final",
+      "scenario": "surface-colorbar",
       "status": "pass",
-      "detail": {
-        "bzSegments": 6,
-        "label": "triangular real-space lattice and magnetic Brillouin zone",
-        "magneticPath": "M355.78990945726844,238 L367.5468603934935,238 L432.21009054273156,126 L420.4531396065065,126 L355.78990945726844,238",
-        "title": [
-          "Triangular lattice",
-          "Magnetic Brillouin zone"
-        ]
-      }
+      "detail": "Band 1 E(k) displays its active range [-2.966,-2.902]."
     },
     {
-      "scenario": "grouped-berry-final",
+      "scenario": "worker-auto-recovery",
       "status": "pass",
-      "detail": {
-        "heading": "Bands 3–5 · Berry flux",
-        "badge": "C3–5 = 0",
-        "selected": "3 · group 3–5 · Cg=0"
-      }
+      "detail": "A forced runtime-not-initialized failure terminated endpoint 1, initialized endpoint 2, and successfully retried computeLattice once."
     },
     {
-      "scenario": "batch-cancellation-final",
+      "scenario": "stale-result-retention",
       "status": "pass",
-      "detail": {
-        "message": "Computation cancelled",
-        "states": "0 states",
-        "className": "runtime-status phase-idle"
-      }
+      "detail": "Unit tests verify old butterfly, band, and lattice results survive recompute startup and are replaced only by the first valid new result."
     },
     {
-      "scenario": "q97-performance-final",
+      "scenario": "unsupported-topology-honesty",
       "status": "pass",
-      "detail": {
-        "status": "Computed locally in 6.23 s",
-        "states": "9,312 states"
-      }
+      "detail": "Kagome q=11 renders 330 energy states and exposes a disabled “Chern unavailable” control rather than physical zero."
     },
     {
-      "scenario": "responsive-mobile-final",
+      "scenario": "diophantine-relations",
       "status": "pass",
-      "detail": {
-        "innerWidth": 430,
-        "navOverflow": "auto",
-        "parameterColumns": "375px",
-        "scrollWidth": 415
-      }
+      "detail": "Every gap satisfies r=q·s+p·t for p/q=22/89 and 15/47."
     },
     {
-      "scenario": "semantic-accessibility-final",
+      "scenario": "gauge-invariant-band-groups",
       "status": "pass",
-      "detail": {
-        "controls": 24,
-        "h1": 1,
-        "landmarks": {
-          "aside": 1,
-          "footer": 1,
-          "header": 1,
-          "main": 1,
-          "nav": 1
-        },
-        "liveRegions": 1,
-        "namedGraphics": 1,
-        "reducedMotionRule": true,
-        "unlabeled": []
-      }
+      "detail": "Honeycomb and Kagome grouped Chern values are stable from 7×7 to 11×11 grids and every complete bundle sums to C=0."
+    },
+    {
+      "scenario": "copy-link-and-url-state",
+      "status": "pass",
+      "detail": "Every scientific parameter and active view round-trips through the URL."
+    },
+    {
+      "scenario": "cancellation-and-exports",
+      "status": "pass",
+      "detail": "Cancellation stays terminal; CSV, NPZ, and composed WebGL+SVG PNG downloads have deterministic scientific filenames."
+    },
+    {
+      "scenario": "responsive-layouts",
+      "status": "pass",
+      "detail": "No document overflow at 900 px or 430 px; the 430 px navigation owns its bounded horizontal scroll."
+    },
+    {
+      "scenario": "semantic-accessibility",
+      "status": "pass",
+      "detail": "Named controls and graphical regions, one H1, complete landmarks, a polite live status region, reduced motion, and AA contrast tokens."
     }
   ],
   "additional_checks": [
     {
-      "scenario": "wannier-gap-inspector",
+      "scenario": "native-and-browser-test-matrix",
       "status": "pass",
-      "detail": "φ=1/11, IDOS=0.0909, gap=1.25, Hall tᵣ=1; 100 gaps rendered."
-    },
-    {
-      "scenario": "desktop-and-mobile-e2e",
-      "status": "pass",
-      "detail": "14 Playwright scenarios passed, including CSV, NPZ, and PNG downloads."
+      "detail": "Full pytest, Vitest, Pyodide parity, desktop/mobile Playwright, physics, accessibility, and production-build checks all pass."
     },
     {
       "scenario": "browser-console",
       "status": "pass-with-upstream-note",
-      "detail": "No application errors; only the React Three Fiber dependency emitted the known THREE.Clock deprecation warning."
+      "detail": "No application exceptions occurred; React Three Fiber emits only the known upstream THREE.Clock deprecation warning."
+    },
+    {
+      "scenario": "hofstadtertools-doc-alignment",
+      "status": "pass",
+      "detail": "The app follows the documented Γ-point butterfly sweep, ±10 Chern default, gap-width Wannier sizing, 1×q MUC convention, and Γ/K/M/K′ reference paths."
     }
   ],
   "limitations": [
     {
-      "check": "Keyboard focus traversal through the in-app browser control layer",
-      "result": "inconclusive",
-      "reason": "The browser control did not synthesize Tab focus changes; semantic labels, native focusability, visible outline CSS, reduced-motion handling, and mobile/desktop Playwright coverage were verified instead."
+      "check": "Manual keyboard focus-order certification",
+      "result": "not claimed",
+      "reason": "Semantic native controls, accessible names, focus-outline CSS, reduced-motion handling, and desktop/mobile Playwright interaction were verified; a separate assistive-technology session was not run."
+    },
+    {
+      "check": "Upstream React Three Fiber deprecation",
+      "result": "non-blocking",
+      "reason": "THREE.Clock is deprecated upstream; no application error or rendering fault accompanies the warning."
     }
   ]
 }

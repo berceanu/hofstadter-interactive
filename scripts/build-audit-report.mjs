@@ -16,61 +16,81 @@ const benchmark = JSON.parse(await readFile(join(root, "BENCHMARK.json"), "utf8"
 
 const gallery = [
   {
-    file: "01-butterfly-square.jpg",
-    title: "Progressive GPU butterfly",
+    file: "18-honeycomb-q4-lattice-final.jpg",
+    title: "Honeycomb coordination, directly inspected",
     caption:
-      "Square q=7 baseline: orthographic Three.js point cloud with native SVG physical axes.",
-  },
-  {
-    file: "04-butterfly-hover-inspector.jpg",
-    title: "Spatial-index hover inspection",
-    caption:
-      "The deterministic hover probe resolved φ=1/11, E=-3.918855, band 1, C=1.",
-  },
-  {
-    file: "05-wannier-gap-inspector.jpg",
-    title: "Wannier gap inspector",
-    caption:
-      "Linked IDOS, gap size, midgap energy, and cumulative Hall integer for 100 gaps.",
-  },
-  {
-    file: "07-lattice-triangular-baseline.jpg",
-    title: "Baseline geometry defect",
-    caption:
-      "Before remediation: the q-scaled magnetic cell escaped the panel and a primitive parallelogram was labeled as the first Brillouin zone.",
-    tone: "finding",
-  },
-  {
-    file: "13-lattice-triangular-final.jpg",
-    title: "Corrected magnetic geometry",
-    caption:
-      "After remediation: bounded q·a₂ inset, equal-aspect real space, and a six-edge Wigner–Seitz magnetic Brillouin zone.",
+      "The finite patch visibly contains all three nearest-neighbor bond directions, a two-site rhombic primitive cell, and ordinary plus magnetic Brillouin zones.",
     tone: "fixed",
   },
   {
-    file: "08-bands-energy-square.jpg",
-    title: "Linked band structure",
+    file: "19-honeycomb-q47-butterfly-final.jpg",
+    title: "Honeycomb q=47 is not a chain spectrum",
     caption:
-      "High-symmetry cut, density of states, selected Chern label, and rotatable E(k) surface.",
-  },
-  {
-    file: "14-bands-kagome-grouped.jpg",
-    title: "Gauge-invariant touching-band topology",
-    caption:
-      "Kagome bands 3–5 are treated as one non-Abelian group with total C₃–₅=0.",
+      "All 4,324 Γ-point states span ±2.962t and form structured, chiral-symmetric branches and gaps—not a uniform ±2 chain fill.",
     tone: "fixed",
   },
   {
-    file: "15-butterfly-q97-final.jpg",
-    title: "q=97 performance workload",
+    file: "20-butterfly-q97-progressive.jpg",
+    title: "Progressive render at 3%",
     caption:
-      "All 9,312 states rendered locally; the driven browser run completed in 6.23 seconds.",
+      "291 q=97 states are already visible while the worker continues computing, with the current 17/97 flux line in place.",
+    tone: "fixed",
   },
   {
-    file: "16-mobile-final.jpg",
-    title: "430 px responsive layout",
+    file: "21-butterfly-q97-resized-900.jpg",
+    title: "Responsive WebGL repaint at 900 px",
     caption:
-      "Single-column scientific controls, horizontally scrollable view navigation, and no document-level horizontal overflow.",
+      "After resize, all 9,312 states remain visible, axes and flux marker agree, the hint yields space, and the document has no horizontal overflow.",
+    tone: "fixed",
+  },
+  {
+    file: "22-butterfly-chern-legend-final.jpg",
+    title: "Chern scale with explicit semantics",
+    caption:
+      "The 21-step scale labels C=−10, 0, and +10 and the selected p/q remains marked.",
+    tone: "fixed",
+  },
+  {
+    file: "23-wannier-gap-width-final.jpg",
+    title: "Gap-weighted Wannier fan",
+    caption:
+      "Point area and alpha follow the actual gap width, making the dominant Hall trajectories legible across 9,216 gaps.",
+    tone: "fixed",
+  },
+  {
+    file: "24-honeycomb-q89-bz-final.jpg",
+    title: "Ordinary BZ plus q-folded magnetic BZ",
+    caption:
+      "The ordinary honeycomb hexagon remains readable at q=89 while the magnetic sliver is overlaid and explicitly labeled folded ×89.",
+    tone: "fixed",
+  },
+  {
+    file: "25-bands-linked-momentum-final.jpg",
+    title: "Clicked momentum on the SVG cut",
+    caption:
+      "The cut marker moved to fractional k=(0.271, 0.500), updating the shared state used by the adjacent surface.",
+    tone: "fixed",
+  },
+  {
+    file: "26-band-surface-momentum-marker-final.jpg",
+    title: "The same momentum on the 3D surface",
+    caption:
+      "A luminous sphere and drop line locate k=(0.271, 0.500) on E(k), with the surface color range shown below.",
+    tone: "fixed",
+  },
+  {
+    file: "27-kagome-topology-unavailable-final.jpg",
+    title: "Unavailable is distinct from C=0",
+    caption:
+      "Kagome q=11 energy states remain explorable, while the unsupported fast butterfly topology control is visibly disabled and honestly labeled.",
+    tone: "fixed",
+  },
+  {
+    file: "28-mobile-final.jpg",
+    title: "430 px responsive controls",
+    caption:
+      "The scientific controls become one column, navigation scroll is contained to its strip, and the document itself does not overflow.",
+    tone: "fixed",
   },
 ];
 
@@ -103,7 +123,8 @@ const familyRows = physics.families
               : `${start + 1}: ${chern}`,
           )
           .join(" · ")}</td>
-        <td>${family.brillouin_vertices}</td>
+        <td>${family.topology_available ? "available" : "unavailable"}</td>
+        <td>${family.ordinary_brillouin_vertices} / ${family.brillouin_vertices}</td>
         <td>${family.adapter_max_energy_error.toExponential(1)}</td>
       </tr>`,
   )
@@ -119,6 +140,19 @@ const findingRows = browser.baseline_findings
         </div>
         ${finding.evidence ? `<p><b>Evidence:</b> ${escapeHtml(finding.evidence)}</p>` : ""}
         <p class="resolution"><b>Resolved:</b> ${escapeHtml(finding.resolution)}</p>
+      </article>`,
+  )
+  .join("");
+
+const friendClaimRows = browser.friend_claims
+  .map(
+    (claim) => `
+      <article class="claim ${claim.verdict === "refuted" ? "refuted" : "confirmed"}">
+        <div class="claim-head">
+          <span>${escapeHtml(claim.verdict)}</span>
+          <strong>${escapeHtml(claim.claim)}</strong>
+        </div>
+        <p>${escapeHtml(claim.evidence)}</p>
       </article>`,
   )
   .join("");
@@ -193,6 +227,7 @@ const html = `<!doctype html>
     h2 { margin:0 0 18px; font-size:25px; letter-spacing:-.025em; }
     h3 { margin:0; font-size:16px; }
     p { color:var(--muted); line-height:1.62; }
+    a { color:var(--mint); }
     .verdict { min-width:220px; padding:18px; border:1px solid #2f796c; border-radius:14px; background:#0c2826; }
     .verdict strong { display:block; color:var(--mint); font-size:18px; }
     .verdict span { display:block; margin-top:6px; color:#b5c9c2; font-size:12px; }
@@ -202,6 +237,14 @@ const html = `<!doctype html>
     .metric b { display:block; color:var(--gold); font-size:25px; }
     .metric span { color:var(--muted); font-size:11px; }
     .finding-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .claim-grid { display:grid; gap:12px; }
+    .claim { padding:17px; border:1px solid var(--line); border-radius:12px; background:rgba(12,24,38,.86); }
+    .claim.refuted { border-color:#35796c; background:#0c2826; }
+    .claim.confirmed { border-color:#5f4930; background:#211b17; }
+    .claim-head { display:flex; gap:10px; align-items:flex-start; }
+    .claim-head span { flex:none; padding:3px 7px; border-radius:999px; background:#213b3a; color:var(--mint); font:700 9px ui-monospace,monospace; text-transform:uppercase; }
+    .claim.confirmed .claim-head span { background:#4a3521; color:var(--gold); }
+    .claim p { margin:10px 0 0; font-size:12px; }
     .finding { padding:17px; border:1px solid #5f4930; border-radius:12px; background:#211b17; }
     .finding-head { display:flex; gap:10px; align-items:flex-start; }
     .severity { flex:none; padding:3px 7px; border-radius:999px; background:#4a251f; color:#ffc1b7; font:700 9px ui-monospace,monospace; text-transform:uppercase; }
@@ -252,16 +295,16 @@ const html = `<!doctype html>
     </div>
     <div class="verdict">
       <strong>PASS AFTER REMEDIATION</strong>
-      <span>Five confirmed defects fixed and regression-covered.</span>
+      <span>Honeycomb claim refuted; ${browser.review_verdict.confirmed_findings_fixed} confirmed issues fixed and regression-covered.</span>
     </div>
   </header>
 
   <section class="metrics" aria-label="Audit summary">
-    <div class="metric"><b>33</b><span>native pytest checks</span></div>
-    <div class="metric"><b>7</b><span>Vitest checks</span></div>
-    <div class="metric"><b>14</b><span>desktop/mobile E2E</span></div>
-    <div class="metric"><b>5</b><span>lattice parity families</span></div>
-    <div class="metric"><b>6.23 s</b><span>q=97 driven compute</span></div>
+    <div class="metric"><b>39</b><span>native pytest checks</span></div>
+    <div class="metric"><b>10</b><span>Vitest checks</span></div>
+    <div class="metric"><b>19</b><span>desktop/mobile E2E passes</span></div>
+    <div class="metric"><b>5</b><span>Pyodide parity families</span></div>
+    <div class="metric"><b>6.01 s</b><span>q=97 driven compute</span></div>
   </section>
 
   <section>
@@ -270,44 +313,51 @@ const html = `<!doctype html>
     <div class="two-col">
       <div class="panel">
         <h3>Driven browser coverage</h3>
-        <p>Changed lattice, p/q, hopping, anisotropy, angle, period, and sample controls; switched all four views; hovered states; zoomed and panned physical axes; selected bands; changed energy/Berry surfaces; rotated 3D geometry; cancelled q=97 work; copied a reproducible URL; and downloaded CSV, NPZ, and PNG artifacts.</p>
+        <p>Changed lattice, p/q, hopping, anisotropy, angle, period, and sample controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; cancelled q=97 work; copied a reproducible URL; and downloaded CSV, NPZ, and PNG artifacts.</p>
       </div>
       <div class="panel">
         <h3>Numerical coverage</h3>
-        <p>Compared browser adapters with direct HofstadterTools Hamiltonians for square, triangular, honeycomb, Kagome, and general Bravais families. Checked analytic zero-flux square dispersion, integer topology, touching-band gauge invariance, reciprocal duality, Wigner–Seitz area, finiteness, and sampling stability.</p>
+        <p>Compared browser adapters with direct HofstadterTools Hamiltonians for square, triangular, honeycomb, Kagome, and general Bravais families. Checked analytic dispersions, honeycomb Γ/K/K′ limits and coordination, q=47 bandwidth and chiral symmetry, Diophantine gap relations, grouped topology, reciprocal duality, Wigner–Seitz areas, q-folding, finiteness, and sampling stability.</p>
       </div>
     </div>
+    <p class="note" style="margin-top:16px">Theory and expected visualization conventions were cross-checked against the current HofstadterTools 1.0.7 <a href="https://hofstadter.tools/theory/model.html">model theory</a>, <a href="https://hofstadter.tools/theory/band_structure.html">band-structure reference paths</a>, <a href="https://hofstadter.tools/theory/butterfly.html">butterfly/Chern/Wannier theory</a>, and <a href="https://hofstadter.tools/gallery.html">lattice gallery</a>.</p>
   </section>
 
   <section>
-    <span class="eyebrow">02 · Findings repaired during audit</span>
+    <span class="eyebrow">02 · Review disposition</span>
+    <h2>What the external review got right—and wrong</h2>
+    <div class="claim-grid">${friendClaimRows}</div>
+  </section>
+
+  <section>
+    <span class="eyebrow">03 · Findings repaired during audit</span>
     <h2>Confirmed defects and resolutions</h2>
     <div class="finding-grid">${findingRows}</div>
   </section>
 
   <section>
-    <span class="eyebrow">03 · Physics audit</span>
+    <span class="eyebrow">04 · Physics audit</span>
     <h2>Independent invariants</h2>
     <div class="panel">
       <table>
-        <thead><tr><th>Lattice</th><th>q=7 states</th><th>Band grid</th><th>Topological groups (bands:C)</th><th>BZ edges</th><th>Native ΔE max</th></tr></thead>
+        <thead><tr><th>Lattice</th><th>q=7 states</th><th>Band grid</th><th>Topological groups (bands:C)</th><th>Fast butterfly C</th><th>Ordinary / magnetic BZ edges</th><th>Native ΔE max</th></tr></thead>
         <tbody>${familyRows}</tbody>
       </table>
     </div>
     <div class="two-col" style="margin-top:16px">
       <div class="panel">
-        <h3>Analytic and native parity</h3>
-        <p>Square zero-flux dispersion matched <i>E(k) = −2t[cos(kₓ)+cos(kᵧ)]</i> with maximum error <b>${physics.analytic_square_dispersion_max_error.toExponential(1)}</b>. All five adapter energy arrays matched the direct native model exactly in this run; Chern color arrays agreed exactly.</p>
+        <h3>Honeycomb diagnosis: refuted</h3>
+        <p>Γ gives <b>${physics.honeycomb_invariants.gamma_eigenvalues.map((value) => value.toFixed(0)).join(", ")}</b>, both K and K′ are zero to numerical precision, and a bulk site has <b>${physics.honeycomb_invariants.bulk_coordination}</b> nearest neighbors. The q=47 sweep contains <b>${physics.honeycomb_invariants.q47_states.toLocaleString()}</b> states over ${physics.honeycomb_invariants.q47_fluxes} coprime fluxes, spans <b>${physics.honeycomb_invariants.q47_energy_min.toFixed(6)} to ${physics.honeycomb_invariants.q47_energy_max.toFixed(6)}</b>, and has chiral-symmetry error ${physics.honeycomb_invariants.q47_chiral_symmetry_error.toExponential(1)}.</p>
       </div>
       <div class="panel">
-        <h3>Topology and reciprocal geometry</h3>
-        <p>Grouped Chern values were unchanged from 7×7 to 11×11 sampling, every complete band bundle summed to C=0, reciprocal duality errors stayed below 2.1×10⁻¹⁵, and Brillouin-zone area errors stayed below 1.2×10⁻¹⁴.</p>
+        <h3>Analytic, topological, and geometric parity</h3>
+        <p>Square zero-flux dispersion matched <i>E(k)=−2t[cos(kₓ)+cos(kᵧ)]</i> with maximum error <b>${physics.analytic_square_dispersion_max_error.toExponential(1)}</b>; all five energy adapters matched their direct native Hamiltonians. Every checked gap obeyed the Diophantine relation for 22/89 and 15/47. Grouped Chern values were stable from 7×7 to 11×11, complete bundles summed to C=0, and both ordinary and magnetic BZ duality/area/folding invariants passed.</p>
       </div>
     </div>
   </section>
 
   <section>
-    <span class="eyebrow">04 · Behavioral matrix</span>
+    <span class="eyebrow">05 · Behavioral matrix</span>
     <h2>Observed final-state checks</h2>
     <div class="panel">
       <table><thead><tr><th>Scenario</th><th>Result</th><th>Evidence</th></tr></thead><tbody>${finalCheckRows}</tbody></table>
@@ -315,15 +365,15 @@ const html = `<!doctype html>
   </section>
 
   <section>
-    <span class="eyebrow">05 · Accessibility and responsiveness</span>
+    <span class="eyebrow">06 · Accessibility and responsiveness</span>
     <h2>Semantic and contrast audit</h2>
     <div class="two-col">
       <div class="panel">
         <h3>Semantic structure</h3>
-        <p>The driven DOM contained 24 named interactive controls and no unlabeled controls, exactly one H1, header/nav/main/aside/footer landmarks, a polite live status region, named graphical regions, and a reduced-motion stylesheet. Mobile checks at 390 px and 430 px found no document-level horizontal overflow; view navigation scrolls within its own bounded strip.</p>
+        <p>The driven DOM uses named native controls and graphical regions, exactly one H1, header/nav/main/aside/footer landmarks, a polite live status region, and a reduced-motion stylesheet. Checks at 900 px and 430 px found no document-level horizontal overflow; mobile view navigation scrolls only within its own bounded strip.</p>
       </div>
       <div class="note">
-        <b>Explicit limitation:</b> the in-app browser control layer did not synthesize Tab traversal, so a full manual focus-order certification is not claimed. Native semantic controls, focus-outline CSS, accessible names, reduced motion, and desktop/mobile Playwright interaction all passed.
+        <b>Explicit limitation:</b> a separate assistive-technology session and full manual focus-order certification were not performed. Native semantic controls, focus-outline CSS, accessible names, reduced motion, and desktop/mobile Playwright interaction all passed.
       </div>
     </div>
     <div class="panel" style="margin-top:16px">
@@ -332,28 +382,28 @@ const html = `<!doctype html>
   </section>
 
   <section>
-    <span class="eyebrow">06 · Performance and architecture</span>
+    <span class="eyebrow">07 · Performance and architecture</span>
     <h2>Target remains met</h2>
     <div class="two-col">
       <div class="panel">
         <h3>Measured browser workload</h3>
-        <p>The final driven q=97 square butterfly rendered <b>9,312 states in 6.23 seconds</b>. The reproducible benchmark records ${benchmark.first_meaningful_render_seconds.toFixed(3)} s to first meaningful chunk, ${benchmark.browser_compute_seconds.toFixed(2)} s computation, and ${benchmark.browser_runtime_and_compute_seconds.toFixed(3)} s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
+        <p>The final driven q=97 square butterfly rendered <b>9,312 states in 6.01 seconds</b>, with a screenshot at 291 states and 3%. The reproducible benchmark records ${benchmark.first_meaningful_render_seconds.toFixed(3)} s to first meaningful chunk, ${benchmark.browser_compute_seconds.toFixed(2)} s computation, and ${benchmark.browser_runtime_and_compute_seconds.toFixed(3)} s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
       </div>
       <div class="panel">
         <h3>Responsiveness safeguards</h3>
-        <p>Float64 transferable arrays cross Comlink without live proxies; render buffers convert to Float32 only at the GPU; numerical arrays remain outside Zustand; stale requests are ignored; butterfly batches yield to the worker event loop; cancellation is terminal; and worker cancellation IDs are cleared after completion.</p>
+        <p>Float64 transferable arrays cross Comlink without live proxies; render buffers convert to Float32 only at the GPU; numerical arrays remain outside Zustand; stale requests are ignored; old results remain visible until replacements arrive; butterfly batches yield to the worker event loop; cancellation is terminal; and a lost runtime triggers one clean worker reinitialization and retry.</p>
       </div>
     </div>
   </section>
 
   <section>
-    <span class="eyebrow">07 · Visual evidence</span>
+    <span class="eyebrow">08 · Visual evidence</span>
     <h2>Captured during driven testing</h2>
     <div class="gallery">${galleryCards}</div>
   </section>
 
   <section>
-    <span class="eyebrow">08 · Residual notes</span>
+    <span class="eyebrow">09 · Residual notes</span>
     <h2>What remains non-blocking</h2>
     <div class="panel">
       <ul>
@@ -373,5 +423,5 @@ const html = `<!doctype html>
 
 const output = join(root, "public", "audit", "HH_INTERACTIVE_AUDIT.html");
 await mkdir(join(root, "public", "audit"), { recursive: true });
-await writeFile(output, html);
+await writeFile(output, html.replace(/[ \t]+$/gm, ""));
 console.log(`Wrote self-contained audit report: ${output}`);

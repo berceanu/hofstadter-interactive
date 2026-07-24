@@ -1,6 +1,7 @@
 import type { ButterflyResult } from "../compute/contracts";
 
 export interface ButterflyArrays {
+  topologyAvailable: boolean;
   flux: Float64Array;
   energy: Float64Array;
   band: Int32Array;
@@ -31,6 +32,8 @@ function concatenate<T extends Float64Array | Int32Array>(
 export function flattenButterfly(result?: ButterflyResult): ButterflyArrays {
   const chunks = result?.chunks ?? [];
   return {
+    topologyAvailable:
+      chunks.length === 0 || chunks.every((chunk) => chunk.topologyAvailable),
     flux: concatenate(
       chunks.map((chunk) => chunk.flux),
       Float64Array,

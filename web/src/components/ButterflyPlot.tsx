@@ -1,5 +1,5 @@
 import { Canvas, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { PlotAxes } from "./PlotAxes";
 import { flattenButterfly, extent } from "../utils/arrays";
@@ -19,25 +19,32 @@ interface PointData {
   band: Int32Array;
   chern: Int32Array;
   gap?: Float64Array;
+  topologyAvailable: boolean;
   yRange: [number, number];
 }
 
 const chernPalette = [
-  "#4b73ff",
-  "#54bfff",
-  "#63ead3",
-  "#f0f0d8",
-  "#ffc257",
-  "#ff725c",
-  "#d94ab8",
+  "#2b3cff", "#3154ff", "#3770ff", "#3d8cff", "#43a8ff",
+  "#49c4f2", "#50d8df", "#63ead3", "#83efcf", "#b2e9d5",
+  "#d7e0db",
+  "#eadcb8", "#f7d286", "#ffc257", "#ffa24f", "#ff8256",
+  "#ff665f", "#f6537a", "#e8499d", "#d94ab8", "#be4bd3",
 ];
 
 function chernColor(chern: number) {
-  if (chern === 0) return new THREE.Color("#d7e0db");
-  const index = Math.min(3, Math.abs(chern));
-  return new THREE.Color(
-    chern < 0 ? chernPalette[3 - index] : chernPalette[3 + index],
-  );
+  return new THREE.Color(chernPalette[Math.max(0, Math.min(20, chern + 10))]);
+}
+
+const resetTransform: Transform = { zoom: 1, panX: 0, panY: 0 };
+
+function boundedTransform(transform: Transform): Transform {
+  const zoom = Math.min(18, Math.max(1, transform.zoom));
+  const panLimit = Math.max(0, 1 - 1 / zoom);
+  return {
+    zoom,
+    panX: Math.max(-panLimit, Math.min(panLimit, transform.panX)),
+    panY: Math.max(-panLimit, Math.min(panLimit, transform.panY)),
+  };
 }
 
 function PointCloud({
@@ -56,6 +63,12 @@ function PointCloud({
     const cool = new THREE.Color("#5cf2ce");
     const warm = new THREE.Color("#ffd166");
     const mixed = new THREE.Color();
+    const pointSizes = new Float32Array(count);
+    const pointOpacities = new Float32Array(count);
+    let gapMax = 1e-12;
+    if (data.gap) {
+      for (const gap of data.gap) gapMax = Math.max(gapMax, gap);
+    }
     for (let index = 0; index < count; index += 1) {
       positions[index * 3] = data.x[index] * 2 - 1;
       positions[index * 3 + 1] =
@@ -67,40 +80,113 @@ function PointCloud({
       colors[index * 3] = color.r;
       colors[index * 3 + 1] = color.g;
       colors[index * 3 + 2] = color.b;
+      const gapStrength = data.gap
+        ? Math.sqrt(Math.max(0, data.gap[index]) / gapMax)
+        : 0;
+      pointSizes[index] = data.gap ? 1.8 + 6.2 * gapStrength : 2.5;
+      pointOpacities[index] = data.gap ? 0.2 + 0.78 * gapStrength : 0.92;
     }
     const next = new THREE.BufferGeometry();
     next.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     next.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    next.setAttribute("pointSize", new THREE.BufferAttribute(pointSizes, 1));
+    next.setAttribute("pointOpacity", new THREE.BufferAttribute(pointOpacities, 1));
     next.computeBoundingSphere();
     return next;
   }, [colorMode, data]);
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
-
-  return (
-    <points geometry={geometry}>
-      <pointsMaterial
-        vertexColors
-        size={2.25}
-        sizeAttenuation={false}
-        transparent
-        opacity={0.92}
-        depthWrite={false}
-      />
-    </points>
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        vertexColors: true,
+        vertexShader: `
+          attribute float pointSize;
+          attribute float pointOpacity;
+          varying vec3 vColor;
+          varying float vOpacity;
+          void main() {
+            vColor = color;
+            vOpacity = pointOpacity;
+            gl_PointSize = pointSize;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vColor;
+          varying float vOpacity;
+          void main() {
+            float radius = length(gl_PointCoord - vec2(0.5));
+            if (radius > 0.5) discard;
+            float edge = 1.0 - smoothstep(0.36, 0.5, radius);
+            gl_FragColor = vec4(vColor, vOpacity * edge);
+          }
+        `,
+      }),
+    [],
   );
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => material.dispose(), [material]);
+
+  return <points geometry={geometry} material={material} />;
 }
 
 function CameraSync({ transform }: { transform: Transform }) {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera;
-  useEffect(() => {
+  const size = useThree((state) => state.size);
+  useLayoutEffect(() => {
+    (camera as THREE.OrthographicCamera & { manual?: boolean }).manual = true;
     camera.left = transform.panX - 1 / transform.zoom;
     camera.right = transform.panX + 1 / transform.zoom;
     camera.top = transform.panY + 1 / transform.zoom;
     camera.bottom = transform.panY - 1 / transform.zoom;
     camera.updateProjectionMatrix();
-  }, [camera, transform]);
+  }, [camera, size.height, size.width, transform]);
   return null;
+}
+
+function PlotLegend({
+  colorMode,
+  energyRange,
+  topologyAvailable,
+  wannier,
+}: {
+  colorMode: "spectral" | "chern";
+  energyRange: [number, number];
+  topologyAvailable: boolean;
+  wannier: boolean;
+}) {
+  const showChern = colorMode === "chern" && topologyAvailable;
+  if (!topologyAvailable && wannier) {
+    return (
+      <div className="plot-legend unavailable" aria-label="Hall topology unavailable">
+        Hall topology unavailable · dot area = gap width
+      </div>
+    );
+  }
+  return (
+    <div
+      className="plot-legend"
+      aria-label={showChern ? "Chern number color scale" : "Energy color scale"}
+    >
+      <span>{showChern ? (wannier ? "Hall tᵣ" : "C") : "E / t₁"}</span>
+      <i
+        style={{
+          background: showChern
+            ? `linear-gradient(90deg, ${chernPalette.join(",")})`
+            : "linear-gradient(90deg, #5cf2ce, #ffd166)",
+        }}
+      />
+      <small>
+        <b>{showChern ? "−10" : energyRange[0].toFixed(1)}</b>
+        <b>{showChern ? "0" : ""}</b>
+        <b>{showChern ? "+10" : energyRange[1].toFixed(1)}</b>
+      </small>
+      {wannier && <em>dot area = gap width</em>}
+    </div>
+  );
 }
 
 function buildSpatialIndex(data: PointData) {
@@ -121,13 +207,16 @@ function buildSpatialIndex(data: PointData) {
 export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
   const { butterfly } = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
+  const currentFlux = useAppStore(
+    (state) => state.parameters.p / state.parameters.q,
+  );
   const setSelectedPoint = useAppStore((state) => state.setSelectedPoint);
   const [transform, setTransform] = useState<Transform>({
-    zoom: 1,
-    panX: 0,
-    panY: 0,
+    ...resetTransform,
   });
+  const stageRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number } | undefined>(undefined);
+  const suppressInspectionUntil = useRef(0);
   const arrays = useMemo(() => flattenButterfly(butterfly), [butterfly]);
   const energyRange = useMemo(
     () => extent(arrays.energy, [-4, 4]),
@@ -143,6 +232,7 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
             band: new Int32Array(arrays.dos.map((value) => Math.round(value * 1000))),
             chern: arrays.gapChern,
             gap: arrays.gap,
+            topologyAvailable: arrays.topologyAvailable,
             yRange: [0, 1] as [number, number],
           }
         : {
@@ -151,11 +241,40 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
             energy: arrays.energy,
             band: arrays.band,
             chern: arrays.chern,
+            topologyAvailable: arrays.topologyAvailable,
             yRange: energyRange as [number, number],
           },
     [arrays, energyRange, wannier],
   );
   const spatialIndex = useMemo(() => buildSpatialIndex(data), [data]);
+  const effectiveColorMode =
+    (wannier || colorMode === "chern") && data.topologyAvailable
+      ? "chern"
+      : "spectral";
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const zoomWithWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+      const delta = event.deltaY * (event.deltaMode === 1 ? 18 : 1);
+      setTransform((current) => {
+        const zoom = Math.min(18, Math.max(1, current.zoom * Math.exp(-delta * 0.0012)));
+        const oldHalf = 1 / current.zoom;
+        const newHalf = 1 / zoom;
+        return boundedTransform({
+          zoom,
+          panX: current.panX + ndcX * (oldHalf - newHalf),
+          panY: current.panY + ndcY * (oldHalf - newHalf),
+        });
+      });
+    };
+    stage.addEventListener("wheel", zoomWithWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", zoomWithWheel);
+  }, []);
 
   const xDomain: [number, number] = [
     (transform.panX - 1 / transform.zoom + 1) / 2,
@@ -169,7 +288,11 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
   ];
 
   function inspectPoint(event: React.PointerEvent<HTMLDivElement>) {
-    if (!data.x.length || drag.current) return;
+    if (
+      !data.x.length
+      || drag.current
+      || performance.now() < suppressInspectionUntil.current
+    ) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
@@ -208,7 +331,8 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
         band: wannier
           ? Math.max(0, Math.round(data.y[closest] * 1000))
           : data.band[closest],
-        chern: data.chern[closest],
+        chern: data.topologyAvailable ? data.chern[closest] : undefined,
+        topologyAvailable: data.topologyAvailable,
         dos: wannier ? data.y[closest] : undefined,
         gap: wannier ? data.gap?.[closest] : undefined,
       };
@@ -219,6 +343,7 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
   return (
     <div className="plot-shell spectrum-shell" data-plot-export>
       <div
+        ref={stageRef}
         className="plot-stage"
         onPointerDown={(event) => {
           drag.current = { x: event.clientX, y: event.clientY };
@@ -233,11 +358,14 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
           const dx = event.clientX - drag.current.x;
           const dy = event.clientY - drag.current.y;
           drag.current = { x: event.clientX, y: event.clientY };
-          setTransform((current) => ({
-            ...current,
-            panX: current.panX - (dx / rect.width) * (2 / current.zoom),
-            panY: current.panY + (dy / rect.height) * (2 / current.zoom),
-          }));
+          suppressInspectionUntil.current = performance.now() + 120;
+          setTransform((current) =>
+            boundedTransform({
+              ...current,
+              panX: current.panX - (dx / rect.width) * (2 / current.zoom),
+              panY: current.panY + (dy / rect.height) * (2 / current.zoom),
+            }),
+          );
         }}
         onPointerUp={() => {
           drag.current = undefined;
@@ -245,16 +373,7 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
         onPointerLeave={() => {
           drag.current = undefined;
         }}
-        onWheel={(event) => {
-          event.preventDefault();
-          setTransform((current) => ({
-            ...current,
-            zoom: Math.min(
-              18,
-              Math.max(1, current.zoom * Math.exp(-event.deltaY * 0.0012)),
-            ),
-          }));
-        }}
+        onDoubleClick={() => setTransform({ ...resetTransform })}
         role="img"
         aria-label={
           wannier
@@ -270,7 +389,7 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
         >
           <color attach="background" args={["#08111d"]} />
           <CameraSync transform={transform} />
-          <PointCloud data={data} colorMode={wannier ? "chern" : colorMode} />
+          <PointCloud data={data} colorMode={effectiveColorMode} />
         </Canvas>
       </div>
       <PlotAxes
@@ -279,6 +398,19 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
         xLabel="magnetic flux  φ = p / q"
         yLabel={wannier ? "integrated density of states" : "energy  E / t₁"}
         yFormat={(value) => (wannier ? value.toFixed(2) : value.toFixed(1))}
+        xMarker={currentFlux}
+      />
+      <button
+        className="plot-reset"
+        onClick={() => setTransform({ ...resetTransform })}
+      >
+        reset view
+      </button>
+      <PlotLegend
+        colorMode={effectiveColorMode}
+        energyRange={energyRange}
+        topologyAvailable={data.topologyAvailable}
+        wannier={wannier}
       />
       {!data.x.length && (
         <div className="plot-empty" role="status">
@@ -286,7 +418,9 @@ export function ButterflyPlot({ wannier = false }: { wannier?: boolean }) {
           Waiting for the first numerical batch…
         </div>
       )}
-      <div className="interaction-hint">drag to pan · scroll to zoom · hover to inspect</div>
+      <div className="interaction-hint">
+        drag to pan · wheel / trackpad to zoom · double-click to reset
+      </div>
     </div>
   );
 }

@@ -13,8 +13,9 @@ interface CacheSnapshot {
   lattice?: LatticeResult;
 }
 
-class ResultCache {
+export class ResultCache {
   private snapshot: CacheSnapshot = { revision: 0 };
+  private pendingButterflyRequestId?: string;
   private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void) => {
@@ -30,14 +31,24 @@ class ResultCache {
   }
 
   beginButterfly(requestId: string) {
-    this.publish({
-      ...this.snapshot,
-      butterfly: { requestId, chunks: [], complete: false, elapsedMs: 0 },
-    });
+    this.pendingButterflyRequestId = requestId;
   }
 
   appendButterfly(chunk: ButterflyChunk) {
     const current = this.snapshot.butterfly;
+    if (this.pendingButterflyRequestId === chunk.requestId) {
+      this.pendingButterflyRequestId = undefined;
+      this.publish({
+        ...this.snapshot,
+        butterfly: {
+          requestId: chunk.requestId,
+          chunks: [chunk],
+          complete: false,
+          elapsedMs: 0,
+        },
+      });
+      return;
+    }
     if (!current || current.requestId !== chunk.requestId) return;
     this.publish({
       ...this.snapshot,
@@ -55,7 +66,7 @@ class ResultCache {
   }
 
   beginBands() {
-    this.publish({ ...this.snapshot, bands: undefined });
+    // Keep the last valid result visible until its replacement succeeds.
   }
 
   setBands(result: BandResult) {
@@ -63,7 +74,7 @@ class ResultCache {
   }
 
   beginLattice() {
-    this.publish({ ...this.snapshot, lattice: undefined });
+    // Keep the last valid result visible until its replacement succeeds.
   }
 
   setLattice(result: LatticeResult) {

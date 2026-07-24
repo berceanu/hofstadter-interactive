@@ -7,6 +7,7 @@ interface PlotAxesProps {
   yLabel: string;
   xFormat?: (value: number) => string;
   yFormat?: (value: number) => string;
+  xMarker?: number;
 }
 
 const left = 80;
@@ -21,6 +22,7 @@ export function PlotAxes({
   yLabel,
   xFormat = (value) => value.toFixed(2),
   yFormat = (value) => value.toFixed(1),
+  xMarker,
 }: PlotAxesProps) {
   const x = scaleLinear().domain(xDomain).range([left, right]);
   const y = scaleLinear().domain(yDomain).range([bottom, top]);
@@ -47,6 +49,16 @@ export function PlotAxes({
         <line x1={left} x2={right} y1={bottom} y2={bottom} />
         <line x1={left} x2={left} y1={top} y2={bottom} />
       </g>
+      {xMarker !== undefined
+        && xMarker >= Math.min(...xDomain)
+        && xMarker <= Math.max(...xDomain) && (
+          <g className="flux-marker">
+            <line x1={x(xMarker)} x2={x(xMarker)} y1={top} y2={bottom} />
+            <text x={x(xMarker) + 6} y={bottom - 10}>
+              current φ
+            </text>
+          </g>
+        )}
       <g className="plot-ticks">
         {xTicks.map((tick) => (
           <text key={`xt-${tick}`} x={x(tick)} y={574} textAnchor="middle">

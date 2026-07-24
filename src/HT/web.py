@@ -14,6 +14,7 @@ import numpy as np
 
 from HT.functions import band_structure as band_functions
 from HT.functions import butterfly as butterfly_functions
+from HT.functions import models as model_functions
 from HT.models.hofstadter import Hofstadter
 
 
@@ -31,15 +32,15 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
     )
 
 
-def _band_cherns(model: Hofstadter, band_count: int) -> np.ndarray:
+def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
     """Return the CLI-compatible Diophantine Chern coloring when supported."""
 
     base, _ = butterfly_functions.chern(model.p, model.q)
     if band_count == model.q:
-        return np.asarray(base, dtype=np.int32)
+        return np.asarray(base, dtype=np.int32), True
     if band_count == 2 * model.q and len(model.t) == 1:
-        return np.asarray(base + list(reversed(base)), dtype=np.int32)
-    return np.zeros(band_count, dtype=np.int32)
+        return np.asarray(base + list(reversed(base)), dtype=np.int32), True
+    return np.zeros(band_count, dtype=np.int32), False
 
 
 def _gauss_reduce_2d(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -146,6 +147,7 @@ def compute_butterfly_batch(
     gap_cherns: list[np.ndarray] = []
     gap_fluxes: list[np.ndarray] = []
     gap_energies: list[np.ndarray] = []
+    topology_available = True
 
     for p in range(max(1, int(p_start)), min(q, int(p_end))):
         if gcd(p, q) != 1:
@@ -155,7 +157,8 @@ def compute_butterfly_batch(
             np.linalg.eigvalsh(model.hamiltonian(np.array([0.0, 0.0])))
         ).astype(np.float64)
         band_count = eigenvalues.size
-        band_cherns = _band_cherns(model, band_count)
+        band_cherns, model_topology_available = _band_cherns(model, band_count)
+        topology_available = topology_available and model_topology_available
 
         fluxes.append(np.full(band_count, p / q, dtype=np.float64))
         energies.append(eigenvalues)
@@ -174,6 +177,7 @@ def compute_butterfly_batch(
     empty_float = np.empty(0, dtype=np.float64)
     empty_int = np.empty(0, dtype=np.int32)
     return {
+        "topology_available": topology_available,
         "flux": np.concatenate(fluxes) if fluxes else empty_float,
         "energy": np.concatenate(energies) if energies else empty_float,
         "band": np.concatenate(bands) if bands else empty_int,
@@ -210,6 +214,7 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
     points_per_segment = max(24, samples)
     path_blocks: list[np.ndarray] = []
     path_coordinates: list[np.ndarray] = []
+    path_momenta: list[np.ndarray] = []
     tick_positions: list[float] = []
     cursor = 0
     for index, (_, start) in enumerate(symmetry_points):
@@ -223,6 +228,9 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
                 np.linalg.eigvalsh(model.hamiltonian(momentum))
             )
         path_blocks.append(block)
+        path_momenta.append(
+            start[None, :] + (end - start)[None, :] * fractions[:, None]
+        )
         path_coordinates.append(
             np.linspace(
                 float(cursor),
@@ -235,6 +243,7 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         cursor += points_per_segment
     tick_positions.append(float(cursor))
     path_matrix = np.hstack(path_blocks)
+    path_momentum_matrix = np.vstack(path_momenta)
 
     band_gaps = (
         np.min(values[1:], axis=(1, 2))
@@ -293,6 +302,8 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "group_start": group_starts,
         "group_size": group_sizes,
         "path_x": np.concatenate(path_coordinates),
+        "path_k1": np.ascontiguousarray(path_momentum_matrix[:, 0]),
+        "path_k2": np.ascontiguousarray(path_momentum_matrix[:, 1]),
         "path_energy": np.ascontiguousarray(path_matrix).ravel(),
         "path_ticks": np.asarray(tick_positions, dtype=np.float64),
         "path_labels": labels,
@@ -360,6 +371,8 @@ def compute_lattice(parameters: dict[str, Any]) -> dict[str, Any]:
         [[0.0, 0.0], a1, a1 + a2, a2, [0.0, 0.0]], dtype=np.float64
     )
     bz = _wigner_seitz_cell(reciprocal)
+    ordinary_reciprocal = model_functions.reciprocal_vectors(lattice_vectors)
+    ordinary_bz = _wigner_seitz_cell(ordinary_reciprocal)
     magnetic_cell = np.asarray(
         [[0.0, 0.0], a1, a1 + model.q * a2, model.q * a2, [0.0, 0.0]],
         dtype=np.float64,
@@ -374,6 +387,10 @@ def compute_lattice(parameters: dict[str, Any]) -> dict[str, Any]:
         "magnetic_cell": magnetic_cell.ravel(),
         "lattice_vectors": np.ascontiguousarray(lattice_vectors).ravel(),
         "reciprocal_vectors": np.ascontiguousarray(reciprocal).ravel(),
+        "ordinary_reciprocal_vectors": np.ascontiguousarray(
+            ordinary_reciprocal
+        ).ravel(),
         "bz": bz.ravel(),
+        "ordinary_bz": ordinary_bz.ravel(),
         "basis_count": len(basis),
     }

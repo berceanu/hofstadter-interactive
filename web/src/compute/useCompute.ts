@@ -177,3 +177,23 @@ export async function cancelActiveComputation() {
     message: "Computation cancelled",
   });
 }
+
+export async function retryComputeEngine() {
+  const store = useAppStore.getState();
+  store.setRuntimeReady(false);
+  store.setProgress({
+    phase: "initializing",
+    fraction: 0.05,
+    message: "Restarting the local compute engine",
+  });
+  try {
+    await engine.recover();
+    store.setRuntimeReady(true);
+  } catch (error: unknown) {
+    store.setProgress({
+      phase: "error",
+      fraction: 0,
+      message: computationError(error, "Unable to restart the compute engine."),
+    });
+  }
+}

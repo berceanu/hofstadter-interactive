@@ -37,7 +37,9 @@ export function exportCsv(
   const rows: string[] = [];
   if ((view === "butterfly" || view === "wannier") && butterfly) {
     if (view === "wannier") {
-      rows.push("flux,integrated_dos,gap,midgap_energy,cumulative_chern");
+      rows.push(
+        "flux,integrated_dos,gap,midgap_energy,cumulative_chern,topology_available",
+      );
       for (let index = 0; index < butterfly.dos.length; index += 1) {
         rows.push(
           [
@@ -45,19 +47,21 @@ export function exportCsv(
             butterfly.dos[index],
             butterfly.gap[index],
             butterfly.gapEnergy[index],
-            butterfly.gapChern[index],
+            butterfly.topologyAvailable ? butterfly.gapChern[index] : "",
+            butterfly.topologyAvailable,
           ].join(","),
         );
       }
     } else {
-      rows.push("flux,energy,band,chern");
+      rows.push("flux,energy,band,chern,topology_available");
       for (let index = 0; index < butterfly.energy.length; index += 1) {
         rows.push(
           [
             butterfly.flux[index],
             butterfly.energy[index],
             butterfly.band[index],
-            butterfly.chern[index],
+            butterfly.topologyAvailable ? butterfly.chern[index] : "",
+            butterfly.topologyAvailable,
           ].join(","),
         );
       }
@@ -144,6 +148,9 @@ export function exportNpz(
       chern: npy(view === "wannier" ? butterfly.gapChern : butterfly.chern),
       integrated_dos: npy(butterfly.dos),
       gap: npy(butterfly.gap),
+      topology_available: npy(
+        new Int32Array([butterfly.topologyAvailable ? 1 : 0]),
+      ),
     });
   } else if (view === "bands" && bands) {
     Object.assign(files, {
@@ -153,6 +160,8 @@ export function exportNpz(
       group_start: npy(bands.groupStart),
       group_size: npy(bands.groupSize),
       path_x: npy(bands.pathX),
+      path_k1: npy(bands.pathK1),
+      path_k2: npy(bands.pathK2),
       path_energy: npy(bands.pathEnergy),
     });
   } else if (view === "lattice" && lattice) {
@@ -161,7 +170,8 @@ export function exportNpz(
       site_basis: npy(lattice.siteBasis),
       links: npy(lattice.links),
       unit_cell: npy(lattice.unitCell),
-      brillouin_zone: npy(lattice.bz),
+      magnetic_brillouin_zone: npy(lattice.bz),
+      ordinary_brillouin_zone: npy(lattice.ordinaryBz),
     });
   } else {
     return;

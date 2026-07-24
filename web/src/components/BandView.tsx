@@ -3,7 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { bin, type Bin } from "d3-array";
 import { scaleLinear } from "d3-scale";
 import { area, curveMonotoneY, line } from "d3-shape";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { extent } from "../utils/arrays";
 import { useResultCache } from "../state/resultCache";
@@ -12,9 +12,11 @@ import { useAppStore } from "../state/store";
 function Surface({
   values,
   samples,
+  marker,
 }: {
   values: Float64Array;
   samples: number;
+  marker?: { k1: number; k2: number };
 }) {
   const geometry = useMemo(() => {
     const [min, max] = extent(values, [-1, 1]);
@@ -59,23 +61,73 @@ function Surface({
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
+  const markerPosition = useMemo(() => {
+    if (!marker) return undefined;
+    const [min, max] = extent(values, [-1, 1]);
+    const span = Math.max(1e-9, max - min);
+    const ix = Math.max(
+      0,
+      Math.min(samples - 1, Math.round(marker.k1 * (samples - 1))),
+    );
+    const iy = Math.max(
+      0,
+      Math.min(samples - 1, Math.round(marker.k2 * (samples - 1))),
+    );
+    const normalized = (values[ix * samples + iy] - min) / span;
+    return new THREE.Vector3(
+      (marker.k1 - 0.5) * 3.4,
+      (normalized - 0.5) * 1.7,
+      (marker.k2 - 0.5) * 3.4,
+    );
+  }, [marker, samples, values]);
+
   return (
-    <mesh geometry={geometry}>
-      <meshStandardMaterial
-        vertexColors
-        side={THREE.DoubleSide}
-        roughness={0.58}
-        metalness={0.08}
-      />
-    </mesh>
+    <>
+      <mesh geometry={geometry}>
+        <meshStandardMaterial
+          vertexColors
+          side={THREE.DoubleSide}
+          roughness={0.58}
+          metalness={0.08}
+        />
+      </mesh>
+      {markerPosition && (
+        <group position={markerPosition}>
+          <mesh>
+            <sphereGeometry args={[0.075, 18, 18]} />
+            <meshStandardMaterial
+              color="#fff3b0"
+              emissive="#ffb347"
+              emissiveIntensity={1.4}
+            />
+          </mesh>
+          <lineSegments>
+            <bufferGeometry>
+              <bufferAttribute
+                attach="attributes-position"
+                args={[new Float32Array([0, 0, 0, 0, -2.1, 0]), 3]}
+              />
+            </bufferGeometry>
+            <lineBasicMaterial color="#ffd166" transparent opacity={0.65} />
+          </lineSegments>
+        </group>
+      )}
+    </>
   );
 }
 
-function BandCut() {
+function BandCut({
+  selectedPathIndex,
+  onSelectPath,
+}: {
+  selectedPathIndex: number;
+  onSelectPath: (index: number) => void;
+}) {
   const { bands } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   if (!bands) return null;
+  const bandData = bands;
 
   const energyRange = extent(bands.pathEnergy, [-4, 4]);
   const selectedGroupStart = bands.groupStart[selectedBand] ?? selectedBand;
@@ -109,6 +161,36 @@ function BandCut() {
     .x1((bucket) => densityX(bucket.length))
     .y((bucket) => y((bucket.x0! + bucket.x1!) / 2))
     .curve(curveMonotoneY)(thresholds);
+  const markerIndex = Math.max(
+    0,
+    Math.min(pointsPerBand - 1, selectedPathIndex),
+  );
+  const markerX = x(bands.pathX[markerIndex]);
+  const markerY = y(
+    bands.pathEnergy[selectedBand * pointsPerBand + markerIndex],
+  );
+
+  function selectPoint(
+    event: React.MouseEvent<SVGPathElement>,
+    band: number,
+  ) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const bounds = svg.getBoundingClientRect();
+    const svgX = ((event.clientX - bounds.left) / bounds.width) * 940;
+    const pathCoordinate = x.invert(Math.max(58, Math.min(713, svgX)));
+    let closest = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < pointsPerBand; index += 1) {
+      const distance = Math.abs(bandData.pathX[index] - pathCoordinate);
+      if (distance < closestDistance) {
+        closest = index;
+        closestDistance = distance;
+      }
+    }
+    setSelectedBand(band);
+    onSelectPath(closest);
+  }
 
   return (
     <svg
@@ -138,9 +220,13 @@ function BandCut() {
                 ? "selected-band"
                 : ""
             }
-            onClick={() => setSelectedBand(band)}
+            onClick={(event) => selectPoint(event, band)}
           />
         ))}
+      </g>
+      <g className="momentum-marker" aria-label="Selected momentum">
+        <line x1={markerX} x2={markerX} y1="30" y2="454" />
+        <circle cx={markerX} cy={markerY} r="5" />
       </g>
       <g className="path-labels">
         {Array.from(bands.pathTicks).map((tick, index) => (
@@ -172,6 +258,7 @@ export function BandView() {
   const { bands } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   const metric = useAppStore((state) => state.surfaceMetric);
+  const [selectedPathIndex, setSelectedPathIndex] = useState(0);
   if (!bands) {
     return <div className="view-loading">Diagonalizing the momentum grid…</div>;
   }
@@ -183,6 +270,15 @@ export function BandView() {
   const groupSize = bands.groupSize[selectedBand] ?? 1;
   const groupEnd = groupStart + groupSize;
   const grouped = groupSize > 1;
+  const pathIndex = Math.max(
+    0,
+    Math.min(bands.pathX.length - 1, selectedPathIndex),
+  );
+  const selectedMomentum = {
+    k1: bands.pathK1[pathIndex] ?? 0,
+    k2: bands.pathK2[pathIndex] ?? 0,
+  };
+  const surfaceRange = extent(surface, [-1, 1]);
 
   return (
     <div className="bands-layout">
@@ -198,7 +294,10 @@ export function BandView() {
               : `C = ${bands.chern[selectedBand] ?? 0}`}
           </span>
         </div>
-        <BandCut />
+        <BandCut
+          selectedPathIndex={selectedPathIndex}
+          onSelectPath={setSelectedPathIndex}
+        />
       </section>
       <section className="band-panel surface-panel" data-plot-export>
         <div className="panel-heading">
@@ -211,7 +310,9 @@ export function BandView() {
               · {metric === "energy" ? "E(k)" : "Berry flux"}
             </h2>
           </div>
-          <span className="surface-hint">drag to rotate</span>
+          <span className="surface-hint">
+            k = ({selectedMomentum.k1.toFixed(3)}, {selectedMomentum.k2.toFixed(3)})
+          </span>
         </div>
         <div className="surface-canvas">
           <Canvas
@@ -223,7 +324,11 @@ export function BandView() {
             <ambientLight intensity={1.3} />
             <directionalLight position={[4, 5, 3]} intensity={2.8} />
             <directionalLight position={[-3, 1, -2]} intensity={0.8} color="#5cf2ce" />
-            <Surface values={surface} samples={bands.samples} />
+            <Surface
+              values={surface}
+              samples={bands.samples}
+              marker={selectedMomentum}
+            />
             <gridHelper args={[4.4, 10, "#33506a", "#172a3a"]} position={[0, -0.9, 0]} />
             <OrbitControls
               makeDefault
@@ -239,6 +344,23 @@ export function BandView() {
           <span>{metric === "energy" ? "E / t₁" : "ℬ₁₂"}</span>
           <span>k₂ / |b₂|</span>
         </div>
+        <div className="surface-legend" aria-label={`${metric} color scale`}>
+          <span>{surfaceRange[0].toFixed(3)}</span>
+          <i />
+          <span>{surfaceRange[1].toFixed(3)}</span>
+        </div>
+        <p className="surface-note">
+          {metric === "berry" && grouped ? (
+            <>
+            Non-Abelian Berry flux for bands {groupStart + 1}–{groupEnd}
+            {groupSize === bands.bands
+              ? " · complete bundle integrates to C = 0"
+              : ""}
+            </>
+          ) : (
+            "sphere = symmetry-cut k · drag to orbit · wheel to zoom"
+          )}
+        </p>
       </section>
     </div>
   );

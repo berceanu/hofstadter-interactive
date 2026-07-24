@@ -1,11 +1,44 @@
 {
   "status": "pass",
   "analytic_square_dispersion_max_error": 0.0,
+  "honeycomb_invariants": {
+    "gamma_eigenvalues": [
+      -3.0,
+      3.0
+    ],
+    "k_eigenvalues": [
+      -4.1551787772016717e-16,
+      4.1551787772016717e-16
+    ],
+    "k_prime_eigenvalues": [
+      -3.885780586188048e-16,
+      3.885780586188048e-16
+    ],
+    "bulk_coordination": 3,
+    "q47_states": 4324,
+    "q47_fluxes": 46,
+    "q47_energy_min": -2.9616600503166337,
+    "q47_energy_max": 2.9616600503166377,
+    "q47_chiral_symmetry_error": 8.659739592076221e-15
+  },
+  "diophantine_checks": [
+    {
+      "p": 22,
+      "q": 89,
+      "all_gaps_satisfy_equation": true
+    },
+    {
+      "p": 15,
+      "q": 47,
+      "all_gaps_satisfy_equation": true
+    }
+  ],
   "families": [
     {
       "lattice": "square",
       "butterfly_states": 42,
       "finite_butterfly": true,
+      "topology_available": true,
       "adapter_max_energy_error": 0.0,
       "adapter_chern_exact": true,
       "band_grid_shape": [
@@ -34,13 +67,18 @@
       "group_cherns_stable_7_to_11": true,
       "complete_bundle_chern": 0,
       "reciprocal_duality_error": 0.0,
+      "ordinary_reciprocal_duality_error": 0.0,
       "brillouin_vertices": 4,
-      "brillouin_area_error": 1.7763568394002505e-15
+      "brillouin_area_error": 1.7763568394002505e-15,
+      "ordinary_brillouin_vertices": 4,
+      "ordinary_brillouin_area_error": 7.815970093361102e-14,
+      "folded_area_ratio_error": 3.3306690738754696e-16
     },
     {
       "lattice": "triangular",
       "butterfly_states": 42,
       "finite_butterfly": true,
+      "topology_available": true,
       "adapter_max_energy_error": 0.0,
       "adapter_chern_exact": true,
       "band_grid_shape": [
@@ -69,13 +107,18 @@
       "group_cherns_stable_7_to_11": true,
       "complete_bundle_chern": 0,
       "reciprocal_duality_error": 2.2218928846954427e-16,
+      "ordinary_reciprocal_duality_error": 8.332849114568221e-17,
       "brillouin_vertices": 6,
-      "brillouin_area_error": 9.769962616701378e-15
+      "brillouin_area_error": 9.769962616701378e-15,
+      "ordinary_brillouin_vertices": 6,
+      "ordinary_brillouin_area_error": 2.842170943040401e-14,
+      "folded_area_ratio_error": 3.0531133177191805e-16
     },
     {
       "lattice": "honeycomb",
       "butterfly_states": 84,
       "finite_butterfly": true,
+      "topology_available": true,
       "adapter_max_energy_error": 0.0,
       "adapter_chern_exact": true,
       "band_grid_shape": [
@@ -114,13 +157,18 @@
       "group_cherns_stable_7_to_11": true,
       "complete_bundle_chern": 0,
       "reciprocal_duality_error": 1.4989425472574787e-15,
+      "ordinary_reciprocal_duality_error": 2.0232183629238191e-16,
       "brillouin_vertices": 6,
-      "brillouin_area_error": 7.993605777301127e-15
+      "brillouin_area_error": 7.993605777301127e-15,
+      "ordinary_brillouin_vertices": 6,
+      "ordinary_brillouin_area_error": 5.684341886080802e-14,
+      "folded_area_ratio_error": 3.608224830031759e-16
     },
     {
       "lattice": "kagome",
       "butterfly_states": 126,
       "finite_butterfly": true,
+      "topology_available": false,
       "adapter_max_energy_error": 0.0,
       "adapter_chern_exact": true,
       "band_grid_shape": [
@@ -164,13 +212,18 @@
       "group_cherns_stable_7_to_11": true,
       "complete_bundle_chern": 0,
       "reciprocal_duality_error": 1.4989425472574787e-15,
+      "ordinary_reciprocal_duality_error": 2.0232183629238191e-16,
       "brillouin_vertices": 6,
-      "brillouin_area_error": 7.993605777301127e-15
+      "brillouin_area_error": 7.993605777301127e-15,
+      "ordinary_brillouin_vertices": 6,
+      "ordinary_brillouin_area_error": 5.684341886080802e-14,
+      "folded_area_ratio_error": 3.608224830031759e-16
     },
     {
       "lattice": "bravais",
       "butterfly_states": 42,
       "finite_butterfly": true,
+      "topology_available": true,
       "adapter_max_energy_error": 0.0,
       "adapter_chern_exact": true,
       "band_grid_shape": [
@@ -189,8 +242,12 @@
       "group_cherns_stable_7_to_11": true,
       "complete_bundle_chern": 0,
       "reciprocal_duality_error": 2.0636121862096804e-15,
+      "ordinary_reciprocal_duality_error": 3.3708366714965886e-16,
       "brillouin_vertices": 6,
-      "brillouin_area_error": 1.1546319456101628e-14
+      "brillouin_area_error": 1.1546319456101628e-14,
+      "ordinary_brillouin_vertices": 6,
+      "ordinary_brillouin_area_error": 2.842170943040401e-14,
+      "folded_area_ratio_error": 4.996003610813204e-16
     }
   ]
 }

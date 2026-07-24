@@ -13,6 +13,7 @@ import type {
 type ProgressCallback = ((progress: RuntimeProgress) => void) & ProxyMarked;
 
 interface PythonButterfly {
+  topology_available: boolean;
   flux: Float64Array;
   energy: Float64Array;
   band: Int32Array;
@@ -33,6 +34,8 @@ interface PythonBands {
   group_start: Int32Array;
   group_size: Int32Array;
   path_x: Float64Array;
+  path_k1: Float64Array;
+  path_k2: Float64Array;
   path_energy: Float64Array;
   path_ticks: Float64Array;
   path_labels: string[];
@@ -47,7 +50,9 @@ interface PythonLattice {
   magnetic_cell: Float64Array;
   lattice_vectors: Float64Array;
   reciprocal_vectors: Float64Array;
+  ordinary_reciprocal_vectors: Float64Array;
   bz: Float64Array;
+  ordinary_bz: Float64Array;
   basis_count: number;
 }
 
@@ -164,6 +169,7 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
     );
     const chunk: ButterflyChunk = {
       requestId,
+      topologyAvailable: Boolean(result.topology_available),
       flux: new Float64Array(result.flux),
       energy: new Float64Array(result.energy),
       band: new Int32Array(result.band),
@@ -208,6 +214,8 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       groupStart: new Int32Array(result.group_start),
       groupSize: new Int32Array(result.group_size),
       pathX: new Float64Array(result.path_x),
+      pathK1: new Float64Array(result.path_k1),
+      pathK2: new Float64Array(result.path_k2),
       pathEnergy: new Float64Array(result.path_energy),
       pathTicks: new Float64Array(result.path_ticks),
       pathLabels: Array.from(result.path_labels),
@@ -221,6 +229,8 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       bands.groupStart.buffer,
       bands.groupSize.buffer,
       bands.pathX.buffer,
+      bands.pathK1.buffer,
+      bands.pathK2.buffer,
       bands.pathEnergy.buffer,
       bands.pathTicks.buffer,
       bands.reciprocal.buffer,
@@ -244,7 +254,11 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       magneticCell: new Float64Array(result.magnetic_cell),
       latticeVectors: new Float64Array(result.lattice_vectors),
       reciprocalVectors: new Float64Array(result.reciprocal_vectors),
+      ordinaryReciprocalVectors: new Float64Array(
+        result.ordinary_reciprocal_vectors,
+      ),
       bz: new Float64Array(result.bz),
+      ordinaryBz: new Float64Array(result.ordinary_bz),
       basisCount: Number(result.basis_count),
     };
     return transfer(lattice, [
@@ -255,7 +269,9 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_lattice
       lattice.magneticCell.buffer,
       lattice.latticeVectors.buffer,
       lattice.reciprocalVectors.buffer,
+      lattice.ordinaryReciprocalVectors.buffer,
       lattice.bz.buffer,
+      lattice.ordinaryBz.buffer,
     ]);
   },
 

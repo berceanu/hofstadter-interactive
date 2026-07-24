@@ -12,7 +12,8 @@ export interface SelectedPoint {
   flux: number;
   energy: number;
   band: number;
-  chern: number;
+  chern?: number;
+  topologyAvailable?: boolean;
   dos?: number;
   gap?: number;
 }
