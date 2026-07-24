@@ -1,0 +1,15 @@
+{
+  "date": "2026-07-24",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.6",
+  "workload": "square q=97 butterfly",
+  "points": 9312,
+  "native_seconds": 2.6737,
+  "first_meaningful_render_seconds": 0.014,
+  "browser_compute_seconds": 6.56,
+  "browser_runtime_and_compute_seconds": 9.753,
+  "browser": "Headless Chrome 149.0.7827.55 (Apple M-series laptop)",
+  "browser_target_seconds": 10,
+  "target_met": true,
+  "note": "Browser compute time excludes the one-time local Pyodide/NumPy initialization; the combined cold load and computation also completed under 10 seconds on this machine."
+}

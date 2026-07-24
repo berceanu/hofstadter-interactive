@@ -1,0 +1,25 @@
+name: pytests
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  pytests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: ts-graphviz/setup-graphviz@v2
+      - name: Install dependencies
+        run: |
+          pip install ".[dev]"
+      - name: Set the PYTHONPATH
+        run: |
+          echo "PYTHONPATH=$PYTHONPATH:src" >> "$GITHUB_ENV"
+      - name: Run pytests
+        run: |
+          pytest
