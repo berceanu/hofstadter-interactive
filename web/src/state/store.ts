@@ -36,12 +36,13 @@ interface AppState {
     lattice: number;
     geometry: number;
     topology: number;
+    dispersion: number;
   };
   colorMode: ButterflyColorMode;
   topologicalPalette: TopologicalPalette;
   surfaceMetric: SurfaceMetric;
   geometryColumnsExpanded: boolean;
-  topologyRefinementKey?: string;
+  bandCutZoom: number;
   selectedBand: number;
   selectedPoint?: SelectedPoint;
   progress: RuntimeProgress;
@@ -58,13 +59,19 @@ interface AppState {
   setWorkspaceWide: (wide: boolean) => void;
   setFluxTransform: (transform: { zoom: number; pan: number }) => void;
   incrementComputeCounter: (
-    kind: "sweeps" | "bands" | "lattice" | "geometry" | "topology",
+    kind:
+      | "sweeps"
+      | "bands"
+      | "lattice"
+      | "geometry"
+      | "topology"
+      | "dispersion",
   ) => void;
   setColorMode: (mode: ButterflyColorMode) => void;
   setTopologicalPalette: (palette: TopologicalPalette) => void;
   setSurfaceMetric: (metric: SurfaceMetric) => void;
   setGeometryColumnsExpanded: (expanded: boolean) => void;
-  requestTopologyRefinement: (bandKey?: string) => void;
+  setBandCutZoom: (zoom: number) => void;
   setSelectedBand: (band: number) => void;
   setSelectedPoint: (point?: SelectedPoint) => void;
   setProgress: (progress: RuntimeProgress) => void;
@@ -171,6 +178,27 @@ function normalizeCustomBasis(
     : defaultParameters.customBasis.map((point) => [...point]);
 }
 
+export function automaticMomentumSamples({
+  lattice,
+  q,
+  customBasis,
+}: Pick<ScientificParameters, "lattice" | "q" | "customBasis">) {
+  const multiplier =
+    lattice === "honeycomb"
+      ? 2
+      : lattice === "kagome"
+        ? 3
+        : lattice === "custom"
+          ? Math.max(1, customBasis.length)
+          : 1;
+  const bandCount = Math.max(1, q * multiplier);
+  if (bandCount <= 11) return 21;
+  if (bandCount <= 31) return 17;
+  if (bandCount <= 63) return 13;
+  if (bandCount <= 127) return 9;
+  return 7;
+}
+
 export function normalizeParameters(
   candidate: ScientificParameters,
 ): ScientificParameters {
@@ -179,15 +207,14 @@ export function normalizeParameters(
   const divisor = greatestCommonDivisor(boundedP, boundedQ);
   const p = boundedP / divisor;
   const q = boundedQ / divisor;
-  const rawSamples = boundedInteger(
-    candidate.samples,
-    defaultParameters.samples,
-    7,
-    31,
+  const customBasis = normalizeCustomBasis(
+    candidate.customBasis ?? defaultParameters.customBasis,
   );
-  const samples = rawSamples % 2 === 0
-    ? Math.min(31, rawSamples + 1)
-    : rawSamples;
+  const samples = automaticMomentumSamples({
+    lattice: candidate.lattice,
+    q,
+    customBasis,
+  });
   const hoppings = candidate.hoppings
     .filter(Number.isFinite)
     .slice(0, 5);
@@ -213,9 +240,7 @@ export function normalizeParameters(
     ),
     samples,
     bgt: boundedNumber(candidate.bgt, defaultParameters.bgt, 0, 10),
-    customBasis: normalizeCustomBasis(
-      candidate.customBasis ?? defaultParameters.customBasis,
-    ),
+    customBasis,
   };
 }
 
@@ -243,12 +268,13 @@ export const useAppStore = create<AppState>((set) => ({
     lattice: 0,
     geometry: 0,
     topology: 0,
+    dispersion: 0,
   },
   colorMode: "spectral",
   topologicalPalette: "avron",
   surfaceMetric: "energy",
   geometryColumnsExpanded: false,
-  topologyRefinementKey: undefined,
+  bandCutZoom: 1,
   selectedBand: 0,
   progress: {
     phase: "idle",
@@ -304,8 +330,10 @@ export const useAppStore = create<AppState>((set) => ({
   setSurfaceMetric: (surfaceMetric) => set({ surfaceMetric }),
   setGeometryColumnsExpanded: (geometryColumnsExpanded) =>
     set({ geometryColumnsExpanded }),
-  requestTopologyRefinement: (topologyRefinementKey) =>
-    set({ topologyRefinementKey }),
+  setBandCutZoom: (bandCutZoom) =>
+    set({
+      bandCutZoom: boundedNumber(bandCutZoom, 1, 1, 64),
+    }),
   setSelectedBand: (selectedBand) => set({ selectedBand }),
   setSelectedPoint: (selectedPoint) => set({ selectedPoint }),
   setProgress: (progress) => set({ progress }),

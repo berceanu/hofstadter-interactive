@@ -2,9 +2,11 @@
 
 import { expose, proxy, transfer, type ProxyMarked } from "comlink";
 import { loadPyodide, type PyodideInterface } from "pyodide";
+import { estimatedBandCount } from "./computeKeys";
 import type {
   BandResult,
   ButterflyChunk,
+  DispersionResult,
   GeometryResult,
   LatticeResult,
   RuntimeProgress,
@@ -76,6 +78,20 @@ interface PythonTopology {
   topology_total_winding: number;
   topology_grouping_consistent: boolean;
   wilson_phase_step_limit: number;
+}
+
+interface PythonDispersion {
+  base_samples: number;
+  surface_samples: number;
+  path_samples_per_segment: number;
+  bands: number;
+  energy: Float64Array;
+  path_x: Float64Array;
+  path_k1: Float64Array;
+  path_k2: Float64Array;
+  path_energy: Float64Array;
+  path_ticks: Float64Array;
+  path_labels: string[];
 }
 
 interface PythonGeometryRow {
@@ -223,7 +239,7 @@ await micropip.install(_hh_wheel_url, deps=False)
       }
       await runtime.runPythonAsync(`
 import json
-from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_lattice, compute_topology
+from HT.web import compute_bands, compute_butterfly_batch, compute_dispersion, compute_geometry, compute_lattice, compute_topology
 `);
       onProgress({
         phase: "ready",
@@ -381,15 +397,25 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, com
     const result = runAdapter<PythonTopology>("compute_topology", {
       ...parameters,
       topology_groups: groups,
+      topology_partial:
+        groups.reduce((total, [, size]) => total + size, 0)
+        < estimatedBandCount(parameters),
       topology_samples_x: samplesX,
       topology_samples_y: samplesY,
     });
+    const computedBandCount = groups.reduce(
+      (total, [, size]) => total + size,
+      0,
+    );
     const topology: TopologyResult = {
       requestId,
       baseSamples: Number(result.base_samples),
       samplesX: Number(result.samples_x),
       samplesY: Number(result.samples_y),
       bands: Number(result.bands),
+      computedGroupStart: groups.length === 1 ? groups[0][0] : -1,
+      computedGroupSize: groups.length === 1 ? groups[0][1] : computedBandCount,
+      completeBundle: computedBandCount === Number(result.bands),
       wilson: new Float64Array(result.wilson),
       chern: new Int32Array(result.chern),
       groupStart: new Int32Array(result.group_start),
@@ -416,6 +442,46 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, com
       topology.topologyGroupResolved.buffer,
       topology.wilsonWinding.buffer,
       topology.wilsonMaxStep.buffer,
+    ]);
+  },
+
+  async computeDispersion(
+    requestId: string,
+    parameters: ScientificParameters,
+    surfaceSamples: number,
+    pathSamplesPerSegment: number,
+  ): Promise<DispersionResult> {
+    if (cancelled.has(requestId)) {
+      throw new Error("cancelled");
+    }
+    const started = performance.now();
+    const result = runAdapter<PythonDispersion>("compute_dispersion", {
+      ...parameters,
+      dispersion_surface_samples: surfaceSamples,
+      dispersion_path_samples: pathSamplesPerSegment,
+    });
+    const dispersion: DispersionResult = {
+      requestId,
+      baseSamples: Number(result.base_samples),
+      surfaceSamples: Number(result.surface_samples),
+      pathSamplesPerSegment: Number(result.path_samples_per_segment),
+      bands: Number(result.bands),
+      energy: new Float64Array(result.energy),
+      pathX: new Float64Array(result.path_x),
+      pathK1: new Float64Array(result.path_k1),
+      pathK2: new Float64Array(result.path_k2),
+      pathEnergy: new Float64Array(result.path_energy),
+      pathTicks: new Float64Array(result.path_ticks),
+      pathLabels: Array.from(result.path_labels),
+      elapsedMs: performance.now() - started,
+    };
+    return transfer(dispersion, [
+      dispersion.energy.buffer,
+      dispersion.pathX.buffer,
+      dispersion.pathK1.buffer,
+      dispersion.pathK2.buffer,
+      dispersion.pathEnergy.buffer,
+      dispersion.pathTicks.buffer,
     ]);
   },
 

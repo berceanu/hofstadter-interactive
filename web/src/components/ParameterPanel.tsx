@@ -2,9 +2,12 @@ import {
   useEffect,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import type { LatticeKind } from "../compute/contracts";
 import { useAppStore } from "../state/store";
+import { HelpTooltip } from "./HelpTooltip";
+import { parameterHelp, type HelpCopy } from "./physicsHelp";
 
 const lattices: { value: LatticeKind; label: string }[] = [
   { value: "square", label: "Square" },
@@ -14,6 +17,23 @@ const lattices: { value: LatticeKind; label: string }[] = [
   { value: "bravais", label: "General Bravais" },
   { value: "custom", label: "Custom basis" },
 ];
+
+function FieldLabel({
+  htmlFor,
+  help,
+  children,
+}: {
+  htmlFor: string;
+  help: HelpCopy;
+  children: ReactNode;
+}) {
+  return (
+    <div className="field-label-row">
+      <label htmlFor={htmlFor}>{children}</label>
+      <HelpTooltip copy={help} align="end" />
+    </div>
+  );
+}
 
 export function ParameterPanel() {
   const parameters = useAppStore((state) => state.parameters);
@@ -91,13 +111,22 @@ export function ParameterPanel() {
   return (
     <aside className="parameter-panel" aria-label="Scientific parameters">
       <div className="parameter-heading">
-        <span className="eyebrow">MODEL PARAMETERS</span>
+        <div className="heading-with-help">
+          <span className="eyebrow">MODEL PARAMETERS</span>
+          <HelpTooltip copy={parameterHelp.model} />
+        </div>
         <span className="auto-badge"><i /> AUTO-RUN</span>
       </div>
 
-      <label className="field">
-        <span>Lattice geometry</span>
+      <div className="field">
+        <FieldLabel
+          htmlFor="parameter-lattice"
+          help={parameterHelp.lattice}
+        >
+          Lattice geometry
+        </FieldLabel>
         <select
+          id="parameter-lattice"
           value={parameters.lattice}
           onChange={(event) => setLattice(event.target.value as LatticeKind)}
         >
@@ -107,11 +136,14 @@ export function ParameterPanel() {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       <div className="parameter-section">
         <div className="section-label">
-          <span>Magnetic flux</span>
+          <div className="heading-with-help">
+            <span>Magnetic flux</span>
+            <HelpTooltip copy={parameterHelp.flux} />
+          </div>
           <output>
             φ = {parameters.p}/{parameters.q}
           </output>
@@ -164,13 +196,17 @@ export function ParameterPanel() {
         <div className="range-labels"><span>2</span><span>199</span></div>
       </div>
 
-      <label className="field">
-        <span>
+      <div className="field">
+        <FieldLabel
+          htmlFor="parameter-hoppings"
+          help={parameterHelp.hoppings}
+        >
           {parameters.lattice === "custom"
             ? "Neighbor-shell hoppings t₁, t₂, …"
             : "Hoppings t₁, t₂, …"}
-        </span>
+        </FieldLabel>
         <input
+          id="parameter-hoppings"
           value={hoppings}
           inputMode="decimal"
           onChange={(event) => setHoppings(event.target.value)}
@@ -189,12 +225,18 @@ export function ParameterPanel() {
           }}
         />
         <small>comma-separated neighbor amplitudes</small>
-      </label>
+      </div>
 
       {parameters.lattice === "custom" && (
-        <label className="field custom-basis-field">
-          <span>Basis sites (fractional a₁, a₂)</span>
+        <div className="field custom-basis-field">
+          <FieldLabel
+            htmlFor="parameter-custom-basis"
+            help={parameterHelp.customBasis}
+          >
+            Basis sites (fractional a₁, a₂)
+          </FieldLabel>
           <textarea
+            id="parameter-custom-basis"
             aria-label="Custom basis sites"
             rows={4}
             value={customBasis}
@@ -224,13 +266,19 @@ export function ParameterPanel() {
           <small>
             one x,y pair per line · up to 4 sites · generic upstream solver
           </small>
-        </label>
+        </div>
       )}
 
       <div className="split-fields">
-        <label className="field compact">
-          <span>Anisotropy α</span>
+        <div className="field compact">
+          <FieldLabel
+            htmlFor="parameter-alpha"
+            help={parameterHelp.anisotropy}
+          >
+            Anisotropy α
+          </FieldLabel>
           <input
+            id="parameter-alpha"
             type="number"
             min="0.1"
             max="4"
@@ -242,23 +290,35 @@ export function ParameterPanel() {
             }
             onChange={(event) => setParameter("alpha", Number(event.target.value))}
           />
-        </label>
-        <label className="field compact">
-          <span>Period</span>
+        </div>
+        <div className="field compact">
+          <FieldLabel
+            htmlFor="parameter-period"
+            help={parameterHelp.period}
+          >
+            Period
+          </FieldLabel>
           <input
+            id="parameter-period"
             type="number"
             min="1"
             max="16"
             value={parameters.period}
             onChange={(event) => setParameter("period", Number(event.target.value))}
           />
-        </label>
+        </div>
       </div>
 
       <div className="split-fields">
-        <label className="field compact">
-          <span>θ numerator</span>
+        <div className="field compact">
+          <FieldLabel
+            htmlFor="parameter-theta-numerator"
+            help={parameterHelp.theta}
+          >
+            θ numerator
+          </FieldLabel>
           <input
+            id="parameter-theta-numerator"
             type="number"
             min="1"
             max="180"
@@ -274,10 +334,16 @@ export function ParameterPanel() {
               ])
             }
           />
-        </label>
-        <label className="field compact">
-          <span>θ denominator</span>
+        </div>
+        <div className="field compact">
+          <FieldLabel
+            htmlFor="parameter-theta-denominator"
+            help={parameterHelp.theta}
+          >
+            θ denominator
+          </FieldLabel>
           <input
+            id="parameter-theta-denominator"
             type="number"
             min="2"
             max="360"
@@ -293,36 +359,18 @@ export function ParameterPanel() {
               ])
             }
           />
-        </label>
-      </div>
-
-      <div className="parameter-section samples-section">
-        <div className="section-label">
-          <span>Momentum samples</span>
-          <output>{parameters.samples} × {parameters.samples}</output>
         </div>
-        <input
-          className="range"
-          aria-label="Momentum samples per axis"
-          type="range"
-          min="7"
-          max="31"
-          step="2"
-          value={parameters.samples}
-          onChange={(event) => setParameter("samples", Number(event.target.value))}
-        />
-        <div className="range-labels"><span>faster</span><span>finer</span></div>
-        <small
-          className="control-help"
-          title="The butterfly follows the upstream Γ-point sampling convention."
-        >
-          Bands only · the butterfly remains Γ-point sampled.
-        </small>
       </div>
 
-      <label className="field">
-        <span>Band-gap threshold bgt</span>
+      <div className="field">
+        <FieldLabel
+          htmlFor="parameter-band-gap-threshold"
+          help={parameterHelp.bandGapThreshold}
+        >
+          Band-gap threshold bgt
+        </FieldLabel>
         <input
+          id="parameter-band-gap-threshold"
           aria-label="Band-gap threshold bgt"
           type="number"
           min="0"
@@ -332,7 +380,7 @@ export function ParameterPanel() {
           onChange={(event) => setParameter("bgt", Number(event.target.value))}
         />
         <small>touching-band grouping · upstream default 0.01</small>
-      </label>
+      </div>
 
     </aside>
   );

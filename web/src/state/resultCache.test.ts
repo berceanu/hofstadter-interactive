@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   BandResult,
   ButterflyChunk,
+  DispersionResult,
   LatticeResult,
   TopologyResult,
 } from "../compute/contracts";
@@ -95,5 +96,30 @@ describe("ResultCache stale-result behavior", () => {
 
     expect(cache.expectTopology("topology-a")).toBe(true);
     expect(cache.getSnapshot().topologyStale).toBe(false);
+  });
+
+  it("keeps a stale dispersion visible until its keyed replacement arrives", () => {
+    const cache = new ResultCache();
+    cache.expectDispersion("dispersion-a");
+    cache.setDispersion(
+      { requestId: "dispersion-result-a" } as DispersionResult,
+      "dispersion-a",
+    );
+
+    cache.expectDispersion("dispersion-b");
+    cache.beginDispersion("dispersion-b");
+    expect(cache.getSnapshot().dispersion?.requestId).toBe(
+      "dispersion-result-a",
+    );
+    expect(cache.getSnapshot().dispersionStale).toBe(true);
+
+    cache.setDispersion(
+      { requestId: "dispersion-result-b" } as DispersionResult,
+      "dispersion-b",
+    );
+    expect(cache.getSnapshot().dispersion?.requestId).toBe(
+      "dispersion-result-b",
+    );
+    expect(cache.getSnapshot().dispersionStale).toBe(false);
   });
 });

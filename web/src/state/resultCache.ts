@@ -3,6 +3,7 @@ import type {
   BandResult,
   ButterflyChunk,
   ButterflyResult,
+  DispersionResult,
   GeometryResult,
   LatticeResult,
   TopologyResult,
@@ -25,6 +26,9 @@ interface CacheSnapshot {
   topology?: TopologyResult;
   topologyKey?: string;
   topologyStale: boolean;
+  dispersion?: DispersionResult;
+  dispersionKey?: string;
+  dispersionStale: boolean;
 }
 
 export class ResultCache {
@@ -35,17 +39,20 @@ export class ResultCache {
     latticeStale: false,
     geometryStale: false,
     topologyStale: false,
+    dispersionStale: false,
   };
   private expectedButterflyKey?: string;
   private expectedBandsKey?: string;
   private expectedLatticeKey?: string;
   private expectedGeometryKey?: string;
   private expectedTopologyKey?: string;
+  private expectedDispersionKey?: string;
   private readonly butterflyResults = new Map<string, ButterflyResult>();
   private readonly bandResults = new Map<string, BandResult>();
   private readonly latticeResults = new Map<string, LatticeResult>();
   private readonly geometryResults = new Map<string, GeometryResult>();
   private readonly topologyResults = new Map<string, TopologyResult>();
+  private readonly dispersionResults = new Map<string, DispersionResult>();
   private readonly butterflyWorking = new Map<
     string,
     { key: string; result: ButterflyResult }
@@ -128,6 +135,16 @@ export class ResultCache {
     return Boolean(cached);
   }
 
+  expectDispersion(key: string) {
+    this.expectedDispersionKey = key;
+    const cached = this.dispersionResults.get(key);
+    this.publish({
+      ...(cached ? { dispersion: cached, dispersionKey: key } : {}),
+      dispersionStale: !cached && Boolean(this.snapshot.dispersion),
+    });
+    return Boolean(cached);
+  }
+
   hasButterfly(key: string) {
     return this.butterflyResults.has(key);
   }
@@ -148,15 +165,26 @@ export class ResultCache {
     return this.topologyResults.has(key);
   }
 
+  hasDispersion(key: string) {
+    return this.dispersionResults.has(key);
+  }
+
   isExpected(
-    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
+    kind:
+      | "butterfly"
+      | "bands"
+      | "lattice"
+      | "geometry"
+      | "topology"
+      | "dispersion",
     key: string,
   ) {
     if (kind === "butterfly") return this.expectedButterflyKey === key;
     if (kind === "bands") return this.expectedBandsKey === key;
     if (kind === "lattice") return this.expectedLatticeKey === key;
     if (kind === "geometry") return this.expectedGeometryKey === key;
-    return this.expectedTopologyKey === key;
+    if (kind === "topology") return this.expectedTopologyKey === key;
+    return this.expectedDispersionKey === key;
   }
 
   beginButterfly(requestId: string, key = requestId) {
@@ -258,6 +286,12 @@ export class ResultCache {
     this.expectedTopologyKey ??= key;
   }
 
+  clearTopologyExpectation(key: string) {
+    if (this.expectedTopologyKey !== key) return;
+    this.expectedTopologyKey = undefined;
+    this.publish({ topologyStale: false });
+  }
+
   setTopology(result: TopologyResult, key = result.requestId) {
     this.remember(this.topologyResults, key, result);
     if (this.expectedTopologyKey !== key) return;
@@ -268,8 +302,28 @@ export class ResultCache {
     });
   }
 
+  beginDispersion(key: string) {
+    this.expectedDispersionKey ??= key;
+  }
+
+  setDispersion(result: DispersionResult, key = result.requestId) {
+    this.remember(this.dispersionResults, key, result);
+    if (this.expectedDispersionKey !== key) return;
+    this.publish({
+      dispersion: result,
+      dispersionKey: key,
+      dispersionStale: false,
+    });
+  }
+
   fail(
-    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
+    kind:
+      | "butterfly"
+      | "bands"
+      | "lattice"
+      | "geometry"
+      | "topology"
+      | "dispersion",
     key: string,
   ) {
     if (!this.isExpected(kind, key)) return;
@@ -281,8 +335,10 @@ export class ResultCache {
       this.publish({ latticeStale: Boolean(this.snapshot.lattice) });
     } else if (kind === "geometry") {
       this.publish({ geometryStale: Boolean(this.snapshot.geometry) });
-    } else {
+    } else if (kind === "topology") {
       this.publish({ topologyStale: Boolean(this.snapshot.topology) });
+    } else {
+      this.publish({ dispersionStale: Boolean(this.snapshot.dispersion) });
     }
   }
 }

@@ -1,14 +1,54 @@
 import type {
   BandResult,
   ButterflyColorMode,
+  DispersionResult,
   GeometryResult,
   LatticeResult,
   ScientificParameters,
   TopologyResult,
   ViewKind,
 } from "../compute/contracts";
+import { baseTopologyGridSufficient } from "../compute/computeKeys";
 import type { ButterflyArrays } from "./arrays";
 import { createNpzArchive, type NpyArray } from "./npz";
+
+function topologyCoversBand(
+  topology: TopologyResult | undefined,
+  band: number,
+) {
+  return Boolean(
+    topology
+    && (
+      topology.completeBundle
+      || (
+        topology.computedGroupStart >= 0
+        && band >= topology.computedGroupStart
+        && band
+          < topology.computedGroupStart + topology.computedGroupSize
+      )
+    ),
+  );
+}
+
+function topologyForBand(
+  parameters: ScientificParameters,
+  bands: BandResult,
+  topology: TopologyResult | undefined,
+  band: number,
+) {
+  const source = topologyCoversBand(topology, band) ? topology! : bands;
+  return {
+    resolved:
+      source.topologyGroupingConsistent
+      && Boolean(source.topologyGroupResolved[band])
+      && (
+        source !== bands
+        || baseTopologyGridSufficient(parameters, bands.samples)
+      ),
+    chern: source.chern[band] ?? 0,
+    label: source === bands ? "render" : "adaptive",
+  };
+}
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -38,6 +78,7 @@ export function exportCsv(
   lattice?: LatticeResult,
   geometry?: GeometryResult,
   topology?: TopologyResult,
+  dispersion?: DispersionResult,
 ) {
   const rows: string[] = [];
   if ((view === "butterfly" || view === "wannier") && butterfly) {
@@ -73,12 +114,16 @@ export function exportCsv(
     }
   } else if (view === "bands" && bands) {
     rows.push("band_properties");
-    const effectiveTopology =
+    const refinedTopology =
       topology?.baseSamples === bands.samples
         && topology.bands === bands.bands
         ? topology
-        : bands;
-    const topologySource = effectiveTopology === bands ? "render" : "refined";
+        : undefined;
+    const refinedDispersion =
+      dispersion?.baseSamples === bands.samples
+      && dispersion.bands === bands.bands
+        ? dispersion
+        : undefined;
     const includeGeometry =
       geometry?.samples === bands.samples && geometry.bands === bands.bands;
     const geometryByBand = new Map(
@@ -115,6 +160,12 @@ export function exportCsv(
     );
     for (const row of [...bands.groupRows].reverse()) {
       const geometryRow = geometryByBand.get(row.band);
+      const bandTopology = topologyForBand(
+        parameters,
+        bands,
+        refinedTopology,
+        row.band,
+      );
       rows.push(
         [
           row.band,
@@ -125,9 +176,9 @@ export function exportCsv(
           row.gap ?? "",
           row.gapWidth ?? "",
           row.stdB,
-          effectiveTopology.chern[row.band],
-          effectiveTopology.topologyResolved,
-          topologySource,
+          bandTopology.resolved ? bandTopology.chern : "",
+          bandTopology.resolved,
+          bandTopology.label,
           bands.bgt,
           ...(geometryRow
             ? [
@@ -148,6 +199,12 @@ export function exportCsv(
       "band,k1_index,k2_index,energy,berry_flux,chern,topology_resolved,topology_source,group_start,group_size",
     );
     for (let band = 0; band < bands.bands; band += 1) {
+      const bandTopology = topologyForBand(
+        parameters,
+        bands,
+        refinedTopology,
+        band,
+      );
       for (let ix = 0; ix < bands.samples; ix += 1) {
         for (let iy = 0; iy < bands.samples; iy += 1) {
           const index =
@@ -159,11 +216,60 @@ export function exportCsv(
               iy,
               bands.energy[index],
               bands.berry[index],
-              effectiveTopology.chern[band],
-              effectiveTopology.topologyResolved,
-              topologySource,
+              bandTopology.resolved ? bandTopology.chern : "",
+              bandTopology.resolved,
+              bandTopology.label,
               bands.groupStart[band],
               bands.groupSize[band],
+            ].join(","),
+          );
+        }
+      }
+    }
+    if (refinedDispersion) {
+      rows.push("", "refined_dispersion_surface");
+      rows.push("band,k1_index,k2_index,energy");
+      for (let band = 0; band < refinedDispersion.bands; band += 1) {
+        for (
+          let ix = 0;
+          ix < refinedDispersion.surfaceSamples;
+          ix += 1
+        ) {
+          for (
+            let iy = 0;
+            iy < refinedDispersion.surfaceSamples;
+            iy += 1
+          ) {
+            const index =
+              band
+              * refinedDispersion.surfaceSamples
+              * refinedDispersion.surfaceSamples
+              + ix * refinedDispersion.surfaceSamples
+              + iy;
+            rows.push(
+              [band, ix, iy, refinedDispersion.energy[index]].join(","),
+            );
+          }
+        }
+      }
+      rows.push("", "refined_symmetry_path");
+      rows.push("band,path_index,path_coordinate,k1,k2,energy");
+      for (let band = 0; band < refinedDispersion.bands; band += 1) {
+        for (
+          let index = 0;
+          index < refinedDispersion.pathX.length;
+          index += 1
+        ) {
+          rows.push(
+            [
+              band,
+              index,
+              refinedDispersion.pathX[index],
+              refinedDispersion.pathK1[index],
+              refinedDispersion.pathK2[index],
+              refinedDispersion.pathEnergy[
+                band * refinedDispersion.pathX.length + index
+              ],
             ].join(","),
           );
         }
@@ -198,6 +304,7 @@ export function exportNpz(
   lattice?: LatticeResult,
   geometry?: GeometryResult,
   topology?: TopologyResult,
+  dispersion?: DispersionResult,
 ) {
   const files: Record<string, NpyArray> = {};
   if ((view === "butterfly" || view === "wannier") && butterfly) {
@@ -220,43 +327,79 @@ export function exportNpz(
       ]),
     });
   } else if (view === "bands" && bands) {
-    const effectiveTopology =
+    const refinedTopology =
       topology?.baseSamples === bands.samples
         && topology.bands === bands.bands
         ? topology
-        : bands;
+        : undefined;
+    const refinedDispersion =
+      dispersion?.baseSamples === bands.samples
+      && dispersion.bands === bands.bands
+        ? dispersion
+        : undefined;
     Object.assign(files, {
-      energy: bands.energy,
+      energy: refinedDispersion?.energy ?? bands.energy,
+      dispersion_samples: new Int32Array([
+        refinedDispersion?.surfaceSamples ?? bands.samples,
+      ]),
+      dispersion_path_samples_per_segment: new Int32Array([
+        refinedDispersion?.pathSamplesPerSegment
+        ?? Math.round(
+          bands.pathX.length / Math.max(1, bands.pathLabels.length - 1),
+        ),
+      ]),
       berry_flux: bands.berry,
-      wilson_phase: effectiveTopology.wilson,
-      chern: effectiveTopology.chern,
-      wilson_winding: effectiveTopology.wilsonWinding,
-      wilson_max_step: effectiveTopology.wilsonMaxStep,
-      topology_group_resolved: new Int32Array(
-        effectiveTopology.topologyGroupResolved,
-      ),
+      berry_samples: new Int32Array([bands.samples]),
+      wilson_phase: bands.wilson,
+      chern: bands.chern,
+      wilson_winding: bands.wilsonWinding,
+      wilson_max_step: bands.wilsonMaxStep,
+      topology_group_resolved: new Int32Array(bands.topologyGroupResolved),
       topology_resolved: new Int32Array([
-        effectiveTopology.topologyResolved ? 1 : 0,
+        bands.topologyResolved ? 1 : 0,
       ]),
-      topology_samples_x: new Int32Array([
-        effectiveTopology === bands ? bands.samples : topology!.samplesX,
-      ]),
-      topology_samples_y: new Int32Array([
-        effectiveTopology === bands ? bands.samples : topology!.samplesY,
-      ]),
+      topology_samples_x: new Int32Array([bands.samples]),
+      topology_samples_y: new Int32Array([bands.samples]),
       group_start: bands.groupStart,
       group_size: bands.groupSize,
-      path_x: bands.pathX,
-      path_k1: bands.pathK1,
-      path_k2: bands.pathK2,
-      path_energy: bands.pathEnergy,
+      path_x: refinedDispersion?.pathX ?? bands.pathX,
+      path_k1: refinedDispersion?.pathK1 ?? bands.pathK1,
+      path_k2: refinedDispersion?.pathK2 ?? bands.pathK2,
+      path_energy: refinedDispersion?.pathEnergy ?? bands.pathEnergy,
       magnetic_brillouin_zone: bands.bz,
       ordinary_brillouin_zone: bands.ordinaryBz,
     });
-    if (effectiveTopology !== bands) {
+    if (refinedTopology) {
+      const start = Math.max(0, refinedTopology.computedGroupStart);
+      const size = Math.max(1, refinedTopology.computedGroupSize);
+      const sampleCount = refinedTopology.samplesY;
       Object.assign(files, {
-        render_grid_wilson_phase: bands.wilson,
-        render_grid_chern: bands.chern,
+        adaptive_topology_group_start: new Int32Array([start]),
+        adaptive_topology_group_size: new Int32Array([size]),
+        adaptive_topology_samples_x: new Int32Array([
+          refinedTopology.samplesX,
+        ]),
+        adaptive_topology_samples_y: new Int32Array([sampleCount]),
+        adaptive_topology_wilson_phase: refinedTopology.wilson.slice(
+          start * sampleCount,
+          (start + size) * sampleCount,
+        ),
+        adaptive_topology_chern: refinedTopology.chern.slice(
+          start,
+          start + size,
+        ),
+        adaptive_topology_winding: refinedTopology.wilsonWinding.slice(
+          start,
+          start + size,
+        ),
+        adaptive_topology_resolved: new Int32Array([
+          refinedTopology.topologyResolved ? 1 : 0,
+        ]),
+      });
+    }
+    if (refinedDispersion) {
+      Object.assign(files, {
+        render_grid_energy: bands.energy,
       });
     }
     if (

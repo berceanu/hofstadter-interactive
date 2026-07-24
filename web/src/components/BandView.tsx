@@ -9,12 +9,21 @@ import { extent } from "../utils/arrays";
 import { extractContourSegments } from "../utils/contours";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
-import type { BandResult, TopologyResult } from "../compute/contracts";
+import type {
+  BandResult,
+  DispersionResult,
+  TopologyResult,
+} from "../compute/contracts";
 import {
+  baseTopologyGridSufficient,
   bandComputationKey,
+  dispersionComputationKey,
+  dispersionRefinementGrid,
   topologyComputationKey,
-  topologyRefinementGrid,
+  topologyRefinementPlan,
 } from "../compute/computeKeys";
+import { HelpTooltip } from "./HelpTooltip";
+import { bandResultHelp } from "./physicsHelp";
 
 const TORUS_MAJOR_RADIUS = 1.18;
 const TORUS_REFERENCE_RADIUS = 0.48;
@@ -31,6 +40,51 @@ interface BandCutViewport {
   zoom: number;
   panX: number;
   panY: number;
+}
+
+interface BandPathData {
+  bands: number;
+  pathX: Float64Array;
+  pathK1: Float64Array;
+  pathK2: Float64Array;
+  pathEnergy: Float64Array;
+  pathTicks: Float64Array;
+  pathLabels: string[];
+}
+
+function topologyCoversBand(
+  topology: TopologyResult | undefined,
+  band: number,
+) {
+  if (!topology) return false;
+  return (
+    topology.completeBundle
+    || (
+      topology.computedGroupStart >= 0
+      && band >= topology.computedGroupStart
+      && band
+        < topology.computedGroupStart + topology.computedGroupSize
+    )
+  );
+}
+
+function topologyForBand(
+  bands: BandResult,
+  topology: TopologyResult | undefined,
+  band: number,
+  allowBaseTopology = true,
+) {
+  const usesAdaptive = topologyCoversBand(topology, band);
+  const source = usesAdaptive ? topology! : bands;
+  return {
+    source,
+    resolved:
+      source.topologyGroupingConsistent
+      && Boolean(source.topologyGroupResolved[band])
+      && (usesAdaptive || allowBaseTopology),
+    chern: source.chern[band] ?? 0,
+    winding: source.wilsonWinding[band] ?? 0,
+  };
 }
 
 const resetBandCutViewport: BandCutViewport = {
@@ -54,6 +108,33 @@ function boundedBandCutViewport(
 function centeredFraction(value: number) {
   const wrapped = ((value % 1) + 1) % 1;
   return wrapped > 0.5 ? wrapped - 1 : wrapped;
+}
+
+function samplePeriodicGrid(
+  values: Float64Array,
+  samples: number,
+  k1: number,
+  k2: number,
+) {
+  if (samples < 2 || values.length < samples * samples) return 0;
+  const period = samples - 1;
+  const wrappedK1 = ((k1 % 1) + 1) % 1;
+  const wrappedK2 = ((k2 % 1) + 1) % 1;
+  const gridX = wrappedK1 * period;
+  const gridY = wrappedK2 * period;
+  const x0 = Math.floor(gridX) % period;
+  const y0 = Math.floor(gridY) % period;
+  const x1 = (x0 + 1) % period;
+  const y1 = (y0 + 1) % period;
+  const tx = gridX - Math.floor(gridX);
+  const ty = gridY - Math.floor(gridY);
+  const first =
+    values[x0 * samples + y0] * (1 - tx)
+    + values[x1 * samples + y0] * tx;
+  const second =
+    values[x0 * samples + y1] * (1 - tx)
+    + values[x1 * samples + y1] * tx;
+  return first * (1 - ty) + second * ty;
 }
 
 function SceneSegments({
@@ -157,14 +238,18 @@ function outlineSegments(
 
 function ReciprocalOverlays({
   bands,
-  selectedBand,
+  pathData,
   energyValues,
+  surfaceSamples,
+  showPath,
   showLiftedPath,
   labelOpacity,
 }: {
   bands: BandResult;
-  selectedBand: number;
+  pathData: BandPathData;
   energyValues: Float64Array;
+  surfaceSamples: number;
+  showPath: boolean;
   showLiftedPath: boolean;
   labelOpacity: number;
 }) {
@@ -178,27 +263,38 @@ function ReciprocalOverlays({
   );
   const [energyMin, energyMax] = extent(energyValues, [-1, 1]);
   const energySpan = Math.max(1e-9, energyMax - energyMin);
-  const pathOffset = selectedBand * bands.pathX.length;
   const basePath: [number, number, number][] = [];
   const liftedPath: [number, number, number][] = [];
-  for (let index = 0; index < bands.pathX.length - 1; index += 1) {
-    const firstK1 = centeredFraction(bands.pathK1[index]);
-    const firstK2 = centeredFraction(bands.pathK2[index]);
-    const secondK1 = centeredFraction(bands.pathK1[index + 1]);
-    const secondK2 = centeredFraction(bands.pathK2[index + 1]);
+  for (let index = 0; index < pathData.pathX.length - 1; index += 1) {
+    const firstK1 = centeredFraction(pathData.pathK1[index]);
+    const firstK2 = centeredFraction(pathData.pathK2[index]);
+    const secondK1 = centeredFraction(pathData.pathK1[index + 1]);
+    const secondK2 = centeredFraction(pathData.pathK2[index + 1]);
     if (
       Math.abs(secondK1 - firstK1) > 0.55
       || Math.abs(secondK2 - firstK2) > 0.55
     ) {
       continue;
     }
-    basePath.push(
-      [firstK1 * 3.4, -0.86, firstK2 * 3.4],
-      [secondK1 * 3.4, -0.86, secondK2 * 3.4],
-    );
+    if (showPath) {
+      basePath.push(
+        [firstK1 * 3.4, -0.86, firstK2 * 3.4],
+        [secondK1 * 3.4, -0.86, secondK2 * 3.4],
+      );
+    }
     if (showLiftedPath) {
-      const firstEnergy = bands.pathEnergy[pathOffset + index];
-      const secondEnergy = bands.pathEnergy[pathOffset + index + 1];
+      const firstEnergy = samplePeriodicGrid(
+        energyValues,
+        surfaceSamples,
+        pathData.pathK1[index],
+        pathData.pathK2[index],
+      );
+      const secondEnergy = samplePeriodicGrid(
+        energyValues,
+        surfaceSamples,
+        pathData.pathK1[index + 1],
+        pathData.pathK2[index + 1],
+      );
       liftedPath.push(
         [
           firstK1 * 3.4,
@@ -218,7 +314,9 @@ function ReciprocalOverlays({
     <>
       <SceneSegments points={ordinaryOutline} color="#60788b" opacity={0.24} />
       <SceneSegments points={magneticOutline} color="#5cf2ce" opacity={0.9} />
-      <SceneSegments points={basePath} color="#ffd166" opacity={0.58} />
+      {showPath && (
+        <SceneSegments points={basePath} color="#ffd166" opacity={0.58} />
+      )}
       {showLiftedPath && (
         <SceneSegments points={liftedPath} color="#fff3b0" opacity={1} />
       )}
@@ -756,12 +854,18 @@ function Surface({
 }
 
 function BandCut({
+  pathData,
+  dispersionSource,
+  pathSamplesPerSegment,
   selectedPathIndex,
   onSelectPath,
   highlightBand,
   viewport,
   setViewport,
 }: {
+  pathData: BandPathData;
+  dispersionSource: "base" | "refined";
+  pathSamplesPerSegment: number;
   selectedPathIndex: number;
   onSelectPath: (index: number) => void;
   highlightBand?: number;
@@ -814,11 +918,14 @@ function BandCut({
   if (!bands) return null;
   const bandData = bands;
 
-  const fullEnergyRange = extent(bands.pathEnergy, [-4, 4]);
+  const fullEnergyRange = extent(pathData.pathEnergy, [-4, 4]);
   const highlighted = highlightBand ?? selectedBand;
   const selectedGroupStart = bands.groupStart[highlighted] ?? highlighted;
   const selectedGroupSize = bands.groupSize[highlighted] ?? 1;
-  const xMax = bands.pathX[bands.pathX.length - 1] || 1;
+  const xMax =
+    pathData.pathTicks[pathData.pathTicks.length - 1]
+    || pathData.pathX[pathData.pathX.length - 1]
+    || 1;
   const xDomain: [number, number] = [
     ((viewport.panX - 1 / viewport.zoom + 1) / 2) * xMax,
     ((viewport.panX + 1 / viewport.zoom + 1) / 2) * xMax,
@@ -845,13 +952,13 @@ function BandCut({
   const lineMaker = line<[number, number]>()
     .x((point) => x(point[0]))
     .y((point) => y(point[1]));
-  const pointsPerBand = bands.pathX.length;
+  const pointsPerBand = pathData.pathX.length;
   const paths = Array.from({ length: bands.bands }, (_, band) => {
     const points: [number, number][] = [];
     for (let index = 0; index < pointsPerBand; index += 1) {
       points.push([
-        bands.pathX[index],
-        bands.pathEnergy[band * pointsPerBand + index],
+        pathData.pathX[index],
+        pathData.pathEnergy[band * pointsPerBand + index],
       ]);
     }
     return lineMaker(points) ?? "";
@@ -872,9 +979,9 @@ function BandCut({
     0,
     Math.min(pointsPerBand - 1, selectedPathIndex),
   );
-  const markerX = x(bands.pathX[markerIndex]);
+  const markerX = x(pathData.pathX[markerIndex]);
   const markerY = y(
-    bands.pathEnergy[selectedBand * pointsPerBand + markerIndex],
+    pathData.pathEnergy[selectedBand * pointsPerBand + markerIndex],
   );
 
   function closestPathIndex(svgX: number) {
@@ -882,7 +989,7 @@ function BandCut({
     let closest = 0;
     let closestDistance = Number.POSITIVE_INFINITY;
     for (let index = 0; index < pointsPerBand; index += 1) {
-      const distance = Math.abs(bandData.pathX[index] - pathCoordinate);
+      const distance = Math.abs(pathData.pathX[index] - pathCoordinate);
       if (distance < closestDistance) {
         closest = index;
         closestDistance = distance;
@@ -905,7 +1012,7 @@ function BandCut({
     let nearestBand: number | undefined;
     let nearestDistance = 18;
     for (let band = 0; band < bandData.bands; band += 1) {
-      const energy = bandData.pathEnergy[band * pointsPerBand + pathIndex];
+      const energy = pathData.pathEnergy[band * pointsPerBand + pathIndex];
       const distance = Math.abs(y(energy) - svgY);
       if (distance <= nearestDistance) {
         nearestBand = band;
@@ -1040,6 +1147,9 @@ function BandCut({
       data-band-pan-x={viewport.panX.toFixed(3)}
       data-band-pan-y={viewport.panY.toFixed(3)}
       data-zoom-mode="cursor-centered-2d"
+      data-dispersion-source={dispersionSource}
+      data-path-points={pathData.pathX.length}
+      data-path-samples-per-segment={pathSamplesPerSegment}
     >
       <rect x="0" y="0" width="940" height="500" className="panel-bg" />
       <defs>
@@ -1048,7 +1158,7 @@ function BandCut({
         </clipPath>
       </defs>
       <g className="band-grid" clipPath={`url(#${clipId})`}>
-        {Array.from(bands.pathTicks).map((tick, index) => (
+        {Array.from(pathData.pathTicks).map((tick, index) => (
           <line key={index} x1={x(tick)} x2={x(tick)} y1="30" y2="454" />
         ))}
         {y.ticks(5).map((tick) => (
@@ -1125,10 +1235,10 @@ function BandCut({
         onKeyDown={moveSelectionByKeyboard}
       />
       <g className="path-labels">
-        {Array.from(bands.pathTicks).map((tick, index) => (
+        {Array.from(pathData.pathTicks).map((tick, index) => (
           x(tick) >= 58 && x(tick) <= 713 ? (
             <text key={index} x={x(tick)} y="480" textAnchor="middle">
-              {bands.pathLabels[index]}
+              {pathData.pathLabels[index]}
             </text>
           ) : null
         ))}
@@ -1174,6 +1284,7 @@ function PropertyTable({
   topology?: TopologyResult;
 }) {
   const { bands, geometry } = useResultCache();
+  const parameters = useAppStore((state) => state.parameters);
   const selectedBand = useAppStore((state) => state.selectedBand);
   const geometryColumnsExpanded = useAppStore(
     (state) => state.geometryColumnsExpanded,
@@ -1182,8 +1293,6 @@ function PropertyTable({
     (state) => state.setGeometryColumnsExpanded,
   );
   if (!bands) return null;
-  const topologyData = topology ?? bands;
-  const topologyTrusted = topologyData.topologyResolved;
   const geometryMatches =
     geometry?.samples === bands.samples && geometry.bands === bands.bands;
   const geometryByBand = new Map(
@@ -1197,7 +1306,10 @@ function PropertyTable({
       <div className="panel-heading property-heading">
         <div>
           <span className="eyebrow">UPSTREAM BAND PROPERTIES</span>
-          <h2>Group-resolved topology table</h2>
+          <div className="result-heading-title">
+            <h2>Group-resolved topology table</h2>
+            <HelpTooltip copy={bandResultHelp.properties} />
+          </div>
         </div>
         <div className="property-heading-tools">
           <span className="surface-hint">bgt = {bands.bgt.toPrecision(3)}</span>
@@ -1254,6 +1366,12 @@ function PropertyTable({
                 : String(row.band);
               const select = () => onSelect(row.band);
               const geometryRow = geometryByBand.get(row.band);
+              const topologyState = topologyForBand(
+                bands,
+                topology,
+                row.band,
+                baseTopologyGridSufficient(parameters, bands.samples),
+              );
               return (
                 <tr
                   key={row.group}
@@ -1283,17 +1401,17 @@ function PropertyTable({
                   <td>{formatProperty(row.stdB)}</td>
                   <td
                     className={
-                      topologyTrusted ? "" : "topology-under-resolved-value"
+                      topologyState.resolved
+                        ? ""
+                        : "topology-pending-value"
                     }
                     title={
-                      topologyTrusted
-                        ? "Converged Berry/Wilson Chern invariant"
-                        : "Provisional Berry-grid estimate; topology checks failed"
+                      topologyState.resolved
+                        ? "Berry/Wilson Chern invariant verified"
+                        : "Select this group to resolve its topology automatically"
                     }
                   >
-                    {topologyTrusted
-                      ? topologyData.chern[row.band]
-                      : `${topologyData.chern[row.band]}?`}
+                    {topologyState.resolved ? topologyState.chern : "…"}
                   </td>
                   {geometryColumnsExpanded && (
                     <>
@@ -1326,25 +1444,35 @@ function WilsonPlot({
   selectedIndex,
   onSelect,
   topology,
+  resolving,
 }: {
   selectedIndex?: number;
   onSelect: (index: number) => void;
   topology?: TopologyResult;
+  resolving: boolean;
 }) {
   const { bands } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
+  const parameters = useAppStore((state) => state.parameters);
   if (!bands) return null;
 
-  const topologyData = topology ?? bands;
-  const samples = topology?.samplesY ?? bands.samples;
+  const topologyState = topologyForBand(
+    bands,
+    topology,
+    selectedBand,
+    baseTopologyGridSufficient(parameters, bands.samples),
+  );
+  const topologyData = topologyState.source;
+  const samples =
+    topologyCoversBand(topology, selectedBand)
+      ? topology!.samplesY
+      : bands.samples;
   const offset = Math.min(selectedBand, bands.bands - 1) * samples;
   const phases = Array.from(
     { length: samples },
     (_, index) => principalPhase(topologyData.wilson[offset + index]),
   );
-  const topologyTrusted =
-    topologyData.topologyResolved
-    && Boolean(topologyData.topologyGroupResolved[selectedBand]);
+  const topologyTrusted = topologyState.resolved;
   const chern = topologyData.chern[selectedBand] ?? 0;
   const winding = topologyData.wilsonWinding[selectedBand] ?? 0;
   const x = scaleLinear().domain([0, 1]).range([62, 906]);
@@ -1378,34 +1506,44 @@ function WilsonPlot({
     ? undefined
     : x(selectedIndex / Math.max(1, samples - 1));
   return (
-    <svg
+    <div className="wilson-plot-shell">
+      <div className="wilson-help-trigger">
+        <HelpTooltip copy={bandResultHelp.wilson} />
+      </div>
+      <svg
       className="wilson-plot"
       viewBox="0 0 940 252"
       role="img"
       aria-label="Wilson eigenphase versus normalized k2"
       data-export-layer
       data-wilson-points={samples}
-      data-topology-status={topologyTrusted ? "resolved" : "under-resolved"}
-      data-topology-source={topology ? "refined" : "base"}
+      data-topology-status={
+        topologyTrusted ? "resolved" : resolving ? "resolving" : "unavailable"
+      }
+      data-topology-source={
+        topologyCoversBand(topology, selectedBand) ? "adaptive" : "base"
+      }
       data-berry-chern={chern}
       data-wilson-winding={winding}
-      onClick={chooseRow}
-    >
-      <rect x="0" y="0" width="940" height="252" className="panel-bg" />
-      <text x="24" y="22" className="panel-kicker">
-        {topology ? "REFINED " : ""}WILSON LOOP · SELECTED BAND GROUP
-      </text>
+      onClick={topologyTrusted ? chooseRow : undefined}
+      >
+        <rect x="0" y="0" width="940" height="252" className="panel-bg" />
+        <text x="24" y="22" className="panel-kicker">
+          WILSON LOOP · SELECTED BAND GROUP
+        </text>
       <text
         x="916"
         y="22"
         textAnchor="end"
         className={`wilson-winding ${
-          topologyTrusted ? "" : "under-resolved"
+          topologyTrusted ? "" : "resolving"
         }`}
       >
         {topologyTrusted
           ? `winding = C = ${chern}`
-          : `under-resolved · Cᴮ = ${chern} · W = ${winding}`}
+          : resolving
+            ? "resolving automatically…"
+            : "not certified at this parameter scale"}
       </text>
       <g className="wilson-grid">
         {[-Math.PI, 0, Math.PI].map((phase) => (
@@ -1418,21 +1556,36 @@ function WilsonPlot({
           />
         ))}
       </g>
-      <g className="wilson-lines">
-        {segments.map((points, index) => (
-          <path key={index} d={lineMaker(points) ?? ""} />
-        ))}
-      </g>
-      <g className="wilson-points">
-        {phases.map((phase, index) => (
-          <circle
-            key={index}
-            cx={x(index / Math.max(1, samples - 1))}
-            cy={y(phase)}
-            r="2.8"
-          />
-        ))}
-      </g>
+      {topologyTrusted ? (
+        <>
+          <g className="wilson-lines">
+            {segments.map((points, index) => (
+              <path key={index} d={lineMaker(points) ?? ""} />
+            ))}
+          </g>
+          <g className="wilson-points">
+            {phases.map((phase, index) => (
+              <circle
+                key={index}
+                cx={x(index / Math.max(1, samples - 1))}
+                cy={y(phase)}
+                r="2.8"
+              />
+            ))}
+          </g>
+        </>
+      ) : (
+        <text
+          className="wilson-resolving"
+          x="484"
+          y="126"
+          textAnchor="middle"
+        >
+          {resolving
+            ? "checking Berry/Wilson convergence…"
+            : "no certified Wilson loop available"}
+        </text>
+      )}
       {markerX !== undefined && (
         <line
           className="wilson-marker"
@@ -1451,7 +1604,8 @@ function WilsonPlot({
         <text x="906" y="239" textAnchor="middle">1</text>
         <text x="484" y="249" textAnchor="middle">k₂ / |b₂|</text>
       </g>
-    </svg>
+      </svg>
+    </div>
   );
 }
 
@@ -1463,17 +1617,14 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     geometryStale,
     topology,
     topologyKey,
+    dispersion,
+    dispersionKey,
   } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const metric = useAppStore((state) => state.surfaceMetric);
   const parameters = useAppStore((state) => state.parameters);
-  const topologyRefinementKey = useAppStore(
-    (state) => state.topologyRefinementKey,
-  );
-  const requestTopologyRefinement = useAppStore(
-    (state) => state.requestTopologyRefinement,
-  );
+  const setBandCutZoom = useAppStore((state) => state.setBandCutZoom);
   const [selectedPathIndex, setSelectedPathIndex] = useState(0);
   const [selectedWilsonIndex, setSelectedWilsonIndex] = useState<
     number | undefined
@@ -1485,6 +1636,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   );
   const [torusEnabled, setTorusEnabled] = useState(false);
   const [contoursEnabled, setContoursEnabled] = useState(true);
+  const [symmetryPathEnabled, setSymmetryPathEnabled] = useState(true);
   const [contourSegmentCount, setContourSegmentCount] = useState(0);
   useEffect(() => {
     if (metric === "gxx" || metric === "gxy") setTorusEnabled(false);
@@ -1493,56 +1645,139 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     setBandCutViewport(resetBandCutViewport);
   }, [bands?.requestId]);
   useEffect(() => {
+    setBandCutZoom(bandCutViewport.zoom);
+  }, [bandCutViewport.zoom, setBandCutZoom]);
+  useEffect(
+    () => () => setBandCutZoom(1),
+    [setBandCutZoom],
+  );
+  useEffect(() => {
     setSelectedWilsonIndex(undefined);
     setMarkerSource("path");
-  }, [bands?.requestId, topology?.requestId]);
+  }, [bands?.requestId, dispersion?.requestId, topology?.requestId]);
+  useEffect(() => {
+    setSelectedPathIndex(0);
+  }, [bands?.requestId, dispersion?.requestId]);
   if (!bands) {
     return <div className="view-loading">Diagonalizing the momentum grid…</div>;
   }
   const bandKey = bandComputationKey(parameters);
-  const refinementGrid = topologyRefinementGrid(parameters);
+  const topologyPlan = topologyRefinementPlan(parameters);
   const expectedTopologyKey = topologyComputationKey(
     parameters,
-    refinementGrid,
+    selectedBand,
+    topologyPlan,
   );
   const refinedTopology =
     topologyKey === expectedTopologyKey
       && topology?.baseSamples === bands.samples
       && topology.bands === bands.bands
+      && topologyCoversBand(topology, selectedBand)
       ? topology
       : undefined;
-  const effectiveTopology = refinedTopology ?? bands;
+  const baseSelectedTopology = topologyForBand(
+    bands,
+    undefined,
+    selectedBand,
+    baseTopologyGridSufficient(parameters, bands.samples),
+  );
+  const refinedSelectedTopology = topologyForBand(
+    bands,
+    refinedTopology,
+    selectedBand,
+    baseTopologyGridSufficient(parameters, bands.samples),
+  );
   const topologyRefinementPending =
-    topologyRefinementKey === bandKey && !refinedTopology;
+    !baseSelectedTopology.resolved
+    && topologyPlan.levels.length > 0
+    && !refinedTopology;
+  const topologyUnavailable =
+    !refinedSelectedTopology.resolved
+    && !topologyRefinementPending;
+  const dispersionGrid = dispersionRefinementGrid(
+    parameters,
+    bandCutViewport.zoom,
+  );
+  const expectedDispersionKey = dispersionComputationKey(
+    parameters,
+    dispersionGrid,
+  );
+  const compatibleDispersion =
+    dispersionKey?.startsWith(`${bandKey}|dispersion:`)
+      && dispersion?.baseSamples === bands.samples
+      && dispersion.bands === bands.bands
+      ? dispersion
+      : undefined;
+  const exactDispersion =
+    dispersionKey === expectedDispersionKey
+      && dispersion?.baseSamples === bands.samples
+      && dispersion.bands === bands.bands
+      ? dispersion
+      : undefined;
+  const refinedDispersion = exactDispersion ?? compatibleDispersion;
+  const basePathSamplesPerSegment = Math.max(
+    1,
+    Math.round(
+      bands.pathX.length / Math.max(1, bands.pathLabels.length - 1),
+    ),
+  );
+  const dispersionCanRefine =
+    dispersionGrid.surfaceSamples > bands.samples
+    || dispersionGrid.pathSamplesPerSegment > basePathSamplesPerSegment;
+  const dispersionRefinementPending =
+    dispersionCanRefine && !exactDispersion;
+  const pathData: BandPathData = refinedDispersion ?? bands;
+  const pathSamplesPerSegment =
+    refinedDispersion?.pathSamplesPerSegment ?? basePathSamplesPerSegment;
   const wilsonSamples = refinedTopology?.samplesY ?? bands.samples;
-  const count = bands.samples * bands.samples;
+  const baseCount = bands.samples * bands.samples;
   const displayBand = Math.min(
     hoveredBand ?? selectedBand,
     bands.bands - 1,
   );
-  const offset = displayBand * count;
-  const energySurface = bands.energy.slice(offset, offset + count);
+  const baseOffset = displayBand * baseCount;
+  const baseEnergySurface = bands.energy.slice(
+    baseOffset,
+    baseOffset + baseCount,
+  );
+  const refinedCount =
+    (refinedDispersion?.surfaceSamples ?? 0)
+    * (refinedDispersion?.surfaceSamples ?? 0);
+  const refinedOffset = displayBand * refinedCount;
+  const energySurface = refinedDispersion
+    ? refinedDispersion.energy.slice(
+        refinedOffset,
+        refinedOffset + refinedCount,
+      )
+    : baseEnergySurface;
+  const energySurfaceSamples =
+    refinedDispersion?.surfaceSamples ?? bands.samples;
   const wantsGeometry = metric === "gxx" || metric === "gxy";
   const geometryMatches =
     geometry?.samples === bands.samples && geometry.bands === bands.bands;
   const geometrySurface = wantsGeometry && geometryMatches
     ? (metric === "gxx" ? geometry.gxx : geometry.gxy).slice(
-        offset,
-        offset + count,
+        baseOffset,
+        baseOffset + baseCount,
       )
     : undefined;
+  const geometryPending = wantsGeometry && !geometryMatches;
   const surface = metric === "energy"
     ? energySurface
     : metric === "berry"
-      ? bands.berry.slice(offset, offset + count)
+      ? bands.berry.slice(baseOffset, baseOffset + baseCount)
       : geometrySurface ?? energySurface;
+  const surfaceSamples =
+    metric === "energy" || geometryPending
+      ? energySurfaceSamples
+      : bands.samples;
   const groupStart = bands.groupStart[displayBand] ?? displayBand;
   const groupSize = bands.groupSize[displayBand] ?? 1;
   const groupLast = groupStart + groupSize - 1;
   const grouped = groupSize > 1;
   const pathIndex = Math.max(
     0,
-    Math.min(bands.pathX.length - 1, selectedPathIndex),
+    Math.min(pathData.pathX.length - 1, selectedPathIndex),
   );
   const selectedMomentum = markerSource === "wilson"
     ? {
@@ -1551,8 +1786,8 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           (selectedWilsonIndex ?? 0) / Math.max(1, wilsonSamples - 1),
       }
     : {
-        k1: bands.pathK1[pathIndex] ?? 0,
-        k2: bands.pathK2[pathIndex] ?? 0,
+        k1: pathData.pathK1[pathIndex] ?? 0,
+        k2: pathData.pathK2[pathIndex] ?? 0,
       };
   const surfaceRange = extent(surface, [-1, 1]);
   const labelOpacity = Math.max(0.12, Math.min(1, 10 / parameters.q));
@@ -1564,20 +1799,20 @@ export function BandView({ compact = false }: { compact?: boolean }) {
         : metric === "gxx"
           ? "gₓₓ(k)"
           : "gₓᵧ(k)";
-  const geometryPending = wantsGeometry && !geometryMatches;
   const torusActive = torusEnabled && !wantsGeometry;
+  const torusEnergySurface =
+    metric === "berry" ? baseEnergySurface : energySurface;
+  const torusSamples =
+    metric === "berry" ? bands.samples : energySurfaceSamples;
   const torusColorValues = metric === "berry" ? surface : energySurface;
-  const selectedTopologyTrusted =
-    effectiveTopology.topologyResolved
-    && Boolean(effectiveTopology.topologyGroupResolved[displayBand]);
-  const selectedChern = effectiveTopology.chern[displayBand] ?? 0;
-  const topologyDiagnosticTitle = [
-    `Berry ΣC = ${effectiveTopology.topologyTotalChern}`,
-    `Wilson ΣW = ${effectiveTopology.topologyTotalWinding}`,
-    effectiveTopology.topologyGroupingConsistent
-      ? "band grouping unchanged"
-      : "refined grid changes the band grouping",
-  ].join(" · ");
+  const displayTopology = topologyForBand(
+    bands,
+    refinedTopology,
+    displayBand,
+    baseTopologyGridSufficient(parameters, bands.samples),
+  );
+  const selectedTopologyTrusted = displayTopology.resolved;
+  const selectedChern = displayTopology.chern;
   const zoomBandCut = (factor: number) => {
     setBandCutViewport((current) =>
       boundedBandCutViewport({
@@ -1611,65 +1846,63 @@ export function BandView({ compact = false }: { compact?: boolean }) {
         <div className="panel-heading">
           <div>
             <span className="eyebrow">SYMMETRY CUT</span>
-            <h2>Linked band structure</h2>
+            <div className="result-heading-title">
+              <h2>Linked band structure</h2>
+              <HelpTooltip copy={bandResultHelp.cut} />
+            </div>
           </div>
           <div className="band-cut-heading-tools">
-            {(!bands.topologyResolved || refinedTopology) && (
-              <div
-                className="topology-resolution-row"
-                role="status"
-                data-topology-resolution={
-                  refinedTopology?.topologyResolved
-                    ? "resolved"
-                    : topologyRefinementPending
-                      ? "refining"
-                      : "under-resolved"
-                }
-                title={topologyDiagnosticTitle}
-              >
-                <span
-                  className={`topology-resolution-chip ${
-                    refinedTopology?.topologyResolved ? "resolved" : ""
-                  }`}
-                >
-                  {refinedTopology
-                    ? refinedTopology.topologyResolved
-                      ? `topology converged · ${refinedTopology.samplesX}×${refinedTopology.samplesY}`
-                      : `still under-resolved · ${refinedTopology.samplesX}×${refinedTopology.samplesY}`
-                    : topologyRefinementPending
-                      ? `refining topology · ${refinementGrid.samplesX}×${refinementGrid.samplesY}`
-                      : `topology under-resolved · ${bands.samples}×${bands.samples}`}
+            <div
+              className="adaptive-resolution-row"
+              role="status"
+              data-dispersion-resolution={
+                dispersionRefinementPending
+                  ? "refining"
+                  : refinedDispersion
+                    ? "optimized"
+                    : "base-optimal"
+              }
+              data-topology-resolution={
+                refinedSelectedTopology.resolved
+                  ? "resolved"
+                  : topologyRefinementPending
+                    ? "resolving"
+                    : "unavailable"
+              }
+            >
+              {(dispersionRefinementPending || topologyRefinementPending) && (
+                <span className="adaptive-resolution-chip">
+                  <i />
+                  optimizing{" "}
+                  {dispersionRefinementPending && topologyRefinementPending
+                    ? "dispersion + topology"
+                    : dispersionRefinementPending
+                      ? "dispersion detail"
+                      : "selected topology"}
+                  …
                 </span>
-                {!refinedTopology && !topologyRefinementPending && (
-                  <button
-                    type="button"
-                    className="topology-refine-button"
-                    onClick={() => requestTopologyRefinement(bandKey)}
-                    title={
-                      refinementGrid.capped
-                        ? "Run a capped high-cost topology grid; very large q may remain under-resolved"
-                        : "Run a higher-cost, memory-bounded Berry/Wilson convergence grid"
-                    }
-                  >
-                    Refine {refinementGrid.samplesX}×{refinementGrid.samplesY}
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
             <div className="band-cut-heading-row">
               <span
                 className={`chern-badge ${
-                  selectedTopologyTrusted ? "" : "under-resolved"
+                  selectedTopologyTrusted ? "" : "resolving"
                 }`}
                 title={
                   selectedTopologyTrusted
-                    ? "Berry and Wilson invariants converged"
-                    : "Provisional value: topology convergence checks failed"
+                    ? "Berry and Wilson invariants verified"
+                    : topologyUnavailable
+                      ? "No certified invariant is available within the interactive compute budget"
+                      : "The selected invariant is being resolved automatically"
                 }
               >
                 {grouped
-                  ? `C${selectedTopologyTrusted ? "" : "?"}${groupStart}–${groupLast} = ${selectedChern}`
-                  : `C${selectedTopologyTrusted ? "" : "?"} = ${selectedChern}`}
+                  ? `C${groupStart}–${groupLast} = ${
+                      selectedTopologyTrusted ? selectedChern : "…"
+                    }`
+                  : `C = ${
+                      selectedTopologyTrusted ? selectedChern : "…"
+                    }`}
               </span>
               <div
                 className="band-cut-zoom-controls"
@@ -1716,6 +1949,9 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           </div>
         </div>
         <BandCut
+          pathData={pathData}
+          dispersionSource={refinedDispersion ? "refined" : "base"}
+          pathSamplesPerSegment={pathSamplesPerSegment}
           selectedPathIndex={selectedPathIndex}
           highlightBand={displayBand}
           viewport={bandCutViewport}
@@ -1734,21 +1970,40 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             setMarkerSource("wilson");
           }}
           topology={refinedTopology}
+          resolving={topologyRefinementPending}
         />
       </section>
       <section className="band-panel surface-panel" data-plot-export>
         <div className="panel-heading">
           <div>
             <span className="eyebrow">ROTATABLE SURFACE</span>
-            <h2>
-              {metric === "berry" && grouped
-                ? `Bands ${groupStart}–${groupLast}`
-                : `Band ${displayBand}`}{" "}
-              · {metricLabel}
-            </h2>
+            <div className="result-heading-title">
+              <h2>
+                {metric === "berry" && grouped
+                  ? `Bands ${groupStart}–${groupLast}`
+                  : `Band ${displayBand}`}{" "}
+                · {metricLabel}
+              </h2>
+              <HelpTooltip copy={bandResultHelp.surface} />
+            </div>
           </div>
           <div className="surface-heading-tools">
             <div className="surface-toggle-row">
+              <button
+                className="surface-toggle symmetry-path-toggle"
+                aria-pressed={symmetryPathEnabled && !torusActive}
+                disabled={torusActive}
+                title={
+                  torusActive
+                    ? "The Γ-path overlay is shown on the rectangular magnetic BZ"
+                    : "Show Γ–X/K–M–Y/K′–Γ on the base plane and selected energy surface"
+                }
+                onClick={() =>
+                  setSymmetryPathEnabled((enabled) => !enabled)
+                }
+              >
+                Γ path
+              </button>
               <button
                 className="surface-toggle contour-toggle"
                 aria-pressed={contoursEnabled}
@@ -1785,7 +2040,26 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           data-symmetry-points={bands.symPoints.length}
           data-mbz-vertices={bands.bz.length / 2}
           data-ordinary-bz-vertices={bands.ordinaryBz.length / 2}
-          data-path-points={bands.pathX.length}
+          data-path-points={pathData.pathX.length}
+          data-path-samples-per-segment={pathSamplesPerSegment}
+          data-surface-samples={
+            torusActive ? torusSamples : surfaceSamples
+          }
+          data-dispersion-source={
+            refinedDispersion && (metric === "energy" || geometryPending)
+              ? "refined"
+              : "base"
+          }
+          data-symmetry-path={
+            symmetryPathEnabled && !torusActive ? "visible" : "hidden"
+          }
+          data-lifted-path-energy-source={
+            symmetryPathEnabled
+              && !torusActive
+              && (metric === "energy" || geometryPending)
+              ? "display-surface"
+              : "hidden"
+          }
           data-surface-topology={torusActive ? "torus" : "sheet"}
           data-dispersion-relief={torusActive ? "0.56" : "0"}
           data-reference-torus={torusActive ? "visible" : "hidden"}
@@ -1815,9 +2089,9 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             <directionalLight position={[4, 5, 3]} intensity={2.8} />
             <directionalLight position={[-3, 1, -2]} intensity={0.8} color="#5cf2ce" />
             <Surface
-              heightValues={torusActive ? energySurface : surface}
+              heightValues={torusActive ? torusEnergySurface : surface}
               colorValues={torusActive ? torusColorValues : surface}
-              samples={bands.samples}
+              samples={torusActive ? torusSamples : surfaceSamples}
               marker={selectedMomentum}
               torus={torusActive}
               contours={contoursEnabled}
@@ -1826,9 +2100,14 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             {!torusActive && (
               <ReciprocalOverlays
                 bands={bands}
-                selectedBand={displayBand}
+                pathData={pathData}
                 energyValues={energySurface}
-                showLiftedPath={metric === "energy" || geometryPending}
+                surfaceSamples={energySurfaceSamples}
+                showPath={symmetryPathEnabled}
+                showLiftedPath={
+                  symmetryPathEnabled
+                  && (metric === "energy" || geometryPending)
+                }
                 labelOpacity={labelOpacity}
               />
             )}
@@ -1883,9 +2162,9 @@ export function BandView({ compact = false }: { compact?: boolean }) {
               ? "group-resolved Fubini–Study metric · field + high-contrast contours projected below"
               : "group-resolved Fubini–Study metric · finite-difference projector derivatives"
           ) : metric === "berry" && !selectedTopologyTrusted ? (
-            refinedTopology
-              ? "topology still under-resolved · Berry field is qualitative at the render-grid resolution"
-              : "topology under-resolved · Berry field is qualitative until the separate refinement converges"
+            topologyRefinementPending
+              ? "Berry field · verifying the selected invariant automatically"
+              : "Berry field · no certified integral is available at this parameter scale"
           ) : metric === "berry" && grouped ? (
             <>
             Non-Abelian Berry flux for bands {groupStart}–{groupLast}
@@ -1898,8 +2177,8 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             </>
           ) : (
             contoursEnabled
-              ? "sphere = symmetry-cut k · field + high-contrast contours projected below · drag to orbit"
-              : "sphere = symmetry-cut k · drag to orbit · wheel to zoom"
+              ? "sphere = symmetry-cut k · adaptive energy detail · Γ path follows the displayed surface · field + contours projected below"
+              : "sphere = symmetry-cut k · adaptive energy detail · Γ path follows the displayed surface · drag to orbit"
           )}
         </p>
       </section>

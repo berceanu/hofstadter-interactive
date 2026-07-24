@@ -43,6 +43,7 @@ describe("URL scientific state", () => {
     expect(query.get("t")).toBe("1,0.1");
     expect(query.get("focus")).toBe("lattice");
     expect(query.has("view")).toBe(false);
+    expect(query.has("samp")).toBe(false);
   });
 
   it("repairs a malicious named-lattice angle and reducible flux", () => {

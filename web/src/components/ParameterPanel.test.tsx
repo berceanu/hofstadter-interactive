@@ -22,10 +22,19 @@ describe("ParameterPanel", () => {
   it("exposes accessible scientific controls", () => {
     render(<ParameterPanel />);
     expect(screen.getByLabelText("Flux denominator q")).toBeInTheDocument();
-    expect(screen.getByLabelText("Momentum samples per axis")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Momentum samples per axis"),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Band-gap threshold bgt")).toBeInTheDocument();
     expect(
-      screen.getByText("Bands only · the butterfly remains Γ-point sampled."),
+      screen.getByRole("button", {
+        name: "Explain Magnetic flux φ = p/q",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Explain Band-gap threshold bgt",
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Private by construction")).not.toBeInTheDocument();
   });

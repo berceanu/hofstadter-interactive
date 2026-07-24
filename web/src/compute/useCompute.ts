@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type {
   FocusKind,
   ScientificParameters,
+  TopologyResult,
   ViewKind,
 } from "./contracts";
 import { PyodideWorkerEngine } from "./workerEngine";
@@ -9,23 +10,32 @@ import { resultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
 import { writeUrlState } from "../state/urlState";
 import {
+  baseTopologyGridSufficient,
   bandComputationKey,
+  dispersionComputationKey,
+  dispersionRefinementGrid,
   latticeComputationKey,
   sweepComputationKey,
   topologyComputationKey,
   topologyRefinementGrid,
-  type TopologyRefinementGrid,
+  topologyRefinementPlan,
+  type DispersionRefinementGrid,
+  type TopologyRefinementPlan,
 } from "./computeKeys";
 
 export {
   bandComputationKey,
+  dispersionComputationKey,
+  dispersionRefinementGrid,
   latticeComputationKey,
   sweepComputationKey,
   topologyComputationKey,
   topologyRefinementGrid,
+  topologyRefinementPlan,
 } from "./computeKeys";
 
 const engine = new PyodideWorkerEngine();
+const ADAPTIVE_WILSON_STEP_LIMIT = 0.8 * Math.PI;
 
 function requestId(kind: string) {
   return `${kind}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
@@ -48,7 +58,10 @@ interface DesiredComputations {
   latticeKey?: string;
   geometryKey?: string;
   topologyKey?: string;
-  topologyGrid?: TopologyRefinementGrid;
+  topologyPlan?: TopologyRefinementPlan;
+  selectedBand?: number;
+  dispersionKey?: string;
+  dispersionGrid?: DispersionRefinementGrid;
 }
 
 function desiredComputations(
@@ -57,7 +70,8 @@ function desiredComputations(
   view: ViewKind,
   workspaceWide: boolean,
   geometryRequested: boolean,
-  topologyRefinementKey?: string,
+  selectedBand: number,
+  bandCutZoom: number,
 ): DesiredComputations {
   const workspace = workspaceWide && focus === "workspace";
   const active = focus === "workspace" ? view : focus;
@@ -66,9 +80,15 @@ function desiredComputations(
   const needsBands = workspace || active === "bands";
   const needsLattice = workspace || active === "lattice";
   const bandsKey = needsBands ? bandComputationKey(parameters) : undefined;
-  const topologyGrid = topologyRefinementGrid(parameters);
-  const topologyRequested =
-    bandsKey !== undefined && topologyRefinementKey === bandsKey;
+  const topologyPlan = topologyRefinementPlan(parameters);
+  const dispersionGrid = dispersionRefinementGrid(
+    parameters,
+    bandCutZoom,
+  );
+  const basePathSamples = Math.max(24, parameters.samples);
+  const dispersionCanRefine =
+    dispersionGrid.surfaceSamples > parameters.samples
+    || dispersionGrid.pathSamplesPerSegment > basePathSamples;
   return {
     parameters,
     ...(needsSweep ? { sweepKey: sweepComputationKey(parameters) } : {}),
@@ -76,10 +96,24 @@ function desiredComputations(
     ...(needsBands && geometryRequested
       ? { geometryKey: bandComputationKey(parameters) }
       : {}),
-    ...(topologyRequested
+    ...(bandsKey && topologyPlan.levels.length
       ? {
-          topologyKey: topologyComputationKey(parameters, topologyGrid),
-          topologyGrid,
+          topologyKey: topologyComputationKey(
+            parameters,
+            selectedBand,
+            topologyPlan,
+          ),
+          topologyPlan,
+          selectedBand,
+        }
+      : {}),
+    ...(bandsKey && dispersionCanRefine
+      ? {
+          dispersionKey: dispersionComputationKey(
+            parameters,
+            dispersionGrid,
+          ),
+          dispersionGrid,
         }
       : {}),
     ...(needsLattice
@@ -92,7 +126,13 @@ class ComputeScheduler {
   private desired?: DesiredComputations;
   private running = false;
   private active?: {
-    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology";
+    kind:
+      | "butterfly"
+      | "bands"
+      | "lattice"
+      | "geometry"
+      | "topology"
+      | "dispersion";
     key: string;
     requestId: string;
   };
@@ -103,6 +143,9 @@ class ComputeScheduler {
     if (next.bandsKey) resultCache.expectBands(next.bandsKey);
     if (next.geometryKey) resultCache.expectGeometry(next.geometryKey);
     if (next.topologyKey) resultCache.expectTopology(next.topologyKey);
+    if (next.dispersionKey) {
+      resultCache.expectDispersion(next.dispersionKey);
+    }
     if (next.sweepKey) resultCache.expectButterfly(next.sweepKey);
 
     if (
@@ -136,12 +179,26 @@ class ComputeScheduler {
                 cached: () => resultCache.hasBands(target.bandsKey!),
               }
             : undefined,
-          target.topologyKey && target.topologyGrid && target.bandsKey
+          target.dispersionKey && target.dispersionGrid && target.bandsKey
+            ? {
+                kind: "dispersion" as const,
+                key: target.dispersionKey,
+                bandKey: target.bandsKey,
+                grid: target.dispersionGrid,
+                cached: () =>
+                  resultCache.hasDispersion(target.dispersionKey!),
+              }
+            : undefined,
+          target.topologyKey
+            && target.topologyPlan
+            && target.selectedBand !== undefined
+            && target.bandsKey
             ? {
                 kind: "topology" as const,
                 key: target.topologyKey,
                 bandKey: target.bandsKey,
-                grid: target.topologyGrid,
+                plan: target.topologyPlan,
+                selectedBand: target.selectedBand,
                 cached: () =>
                   resultCache.hasTopology(target.topologyKey!),
               }
@@ -174,6 +231,14 @@ class ComputeScheduler {
             await this.computeTopology(
               job.key,
               job.bandKey,
+              job.plan,
+              job.selectedBand,
+              target.parameters,
+            );
+          } else if (job.kind === "dispersion") {
+            await this.computeDispersion(
+              job.key,
+              job.bandKey,
               job.grid,
               target.parameters,
             );
@@ -191,7 +256,13 @@ class ComputeScheduler {
   }
 
   private setActive(
-    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
+    kind:
+      | "butterfly"
+      | "bands"
+      | "lattice"
+      | "geometry"
+      | "topology"
+      | "dispersion",
     key: string,
     id: string,
   ) {
@@ -345,44 +416,87 @@ class ComputeScheduler {
   private async computeTopology(
     key: string,
     bandKey: string,
-    grid: TopologyRefinementGrid,
+    plan: TopologyRefinementPlan,
+    selectedBand: number,
     parameters: ScientificParameters,
   ) {
     const snapshot = resultCache.getSnapshot();
     const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
     if (!bands) return;
-    const groups: [number, number][] = [];
-    for (let band = 0; band < bands.bands; band += 1) {
-      if (bands.groupStart[band] !== band) continue;
-      groups.push([band, bands.groupSize[band] ?? 1]);
+    const safeBand = Math.max(0, Math.min(bands.bands - 1, selectedBand));
+    const groupStart = bands.groupStart[safeBand] ?? safeBand;
+    const groupSize = bands.groupSize[groupStart] ?? 1;
+    if (
+      baseTopologyGridSufficient(parameters, bands.samples)
+      && bands.topologyGroupResolved[groupStart]
+    ) {
+      resultCache.clearTopologyExpectation(key);
+      return;
     }
+    const groups: [number, number][] = [[groupStart, groupSize]];
 
     const id = requestId("topology");
     const store = useAppStore.getState();
     resultCache.beginTopology(key);
     store.incrementComputeCounter("topology");
     this.setActive("topology", key, id);
-    store.setProgress({
-      phase: "computing",
-      fraction: 0.1,
-      message: `Refining topology on ${grid.samplesX} × ${grid.samplesY} momentum links`,
-    });
     try {
-      const result = await engine.computeTopology(
-        id,
-        parameters,
-        groups,
-        grid.samplesX,
-        grid.samplesY,
-      );
-      resultCache.setTopology(result, key);
+      let finalResult: TopologyResult | undefined;
+      let totalElapsedMs = 0;
+      for (let pass = 0; pass < plan.levels.length; pass += 1) {
+        const grid = plan.levels[pass];
+        store.setProgress({
+          phase: "computing",
+          fraction: 0.1 + 0.75 * (pass / plan.levels.length),
+          message:
+            `Resolving selected-band topology automatically`
+            + (plan.levels.length > 1
+              ? ` · pass ${pass + 1}/${plan.levels.length}`
+              : ""),
+        });
+        const result = await engine.computeTopology(
+          id,
+          parameters,
+          groups,
+          grid.samplesX,
+          grid.samplesY,
+        );
+        totalElapsedMs += result.elapsedMs;
+        const certified =
+          result.topologyResolved
+          && Boolean(result.topologyGroupResolved[groupStart])
+          && (result.wilsonMaxStep[groupStart] ?? Number.POSITIVE_INFINITY)
+            < ADAPTIVE_WILSON_STEP_LIMIT;
+        const resolvedGroups = new Uint8Array(
+          result.topologyGroupResolved,
+        );
+        resolvedGroups.fill(
+          certified ? 1 : 0,
+          groupStart,
+          groupStart + groupSize,
+        );
+        finalResult = {
+          ...result,
+          topologyResolved: certified,
+          topologyGroupResolved: resolvedGroups,
+          elapsedMs: totalElapsedMs,
+        };
+        if (certified) {
+          break;
+        }
+      }
+      if (!finalResult) {
+        resultCache.clearTopologyExpectation(key);
+        return;
+      }
+      resultCache.setTopology(finalResult, key);
       if (resultCache.isExpected("topology", key)) {
         store.setProgress({
           phase: "complete",
           fraction: 1,
-          message: result.topologyResolved
-            ? `Topology converged in ${(result.elapsedMs / 1000).toFixed(2)} s`
-            : `Topology remains under-resolved after ${(result.elapsedMs / 1000).toFixed(2)} s`,
+          message: finalResult.topologyResolved
+            ? `Selected-band topology verified in ${(finalResult.elapsedMs / 1000).toFixed(2)} s`
+            : "Best available selected-band topology estimate ready",
         });
       }
     } catch (error: unknown) {
@@ -393,6 +507,58 @@ class ComputeScheduler {
             phase: "error",
             fraction: 0,
             message: computationError(error, "Topology refinement failed."),
+          });
+        }
+      }
+    } finally {
+      this.clearActive(id);
+    }
+  }
+
+  private async computeDispersion(
+    key: string,
+    bandKey: string,
+    grid: DispersionRefinementGrid,
+    parameters: ScientificParameters,
+  ) {
+    const snapshot = resultCache.getSnapshot();
+    const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
+    if (!bands) return;
+
+    const id = requestId("dispersion");
+    const store = useAppStore.getState();
+    resultCache.beginDispersion(key);
+    store.incrementComputeCounter("dispersion");
+    this.setActive("dispersion", key, id);
+    store.setProgress({
+      phase: "computing",
+      fraction: 0.1,
+      message: "Optimizing energy detail for the current view",
+    });
+    try {
+      const result = await engine.computeDispersion(
+        id,
+        parameters,
+        grid.surfaceSamples,
+        grid.pathSamplesPerSegment,
+      );
+      resultCache.setDispersion(result, key);
+      if (resultCache.isExpected("dispersion", key)) {
+        store.setProgress({
+          phase: "complete",
+          fraction: 1,
+          message:
+            `Energy detail optimized in ${(result.elapsedMs / 1000).toFixed(2)} s`,
+        });
+      }
+    } catch (error: unknown) {
+      if (!String(error).includes("cancelled")) {
+        resultCache.fail("dispersion", key);
+        if (resultCache.isExpected("dispersion", key)) {
+          store.setProgress({
+            phase: "error",
+            fraction: 0,
+            message: computationError(error, "Dispersion refinement failed."),
           });
         }
       }
@@ -461,9 +627,8 @@ export function useCompute() {
   const geometryColumnsExpanded = useAppStore(
     (state) => state.geometryColumnsExpanded,
   );
-  const topologyRefinementKey = useAppStore(
-    (state) => state.topologyRefinementKey,
-  );
+  const selectedBand = useAppStore((state) => state.selectedBand);
+  const bandCutZoom = useAppStore((state) => state.bandCutZoom);
   const geometryRequested =
     surfaceMetric === "gxx"
     || surfaceMetric === "gxy"
@@ -509,27 +674,26 @@ export function useCompute() {
           view,
           workspaceWide,
           geometryRequested,
-          topologyRefinementKey,
+          selectedBand,
+          bandCutZoom,
         ),
       );
     }, 140);
     return () => window.clearTimeout(timeout);
   }, [
+    bandCutZoom,
     focus,
     geometryRequested,
     parameters,
     runtimeReady,
-    topologyRefinementKey,
+    selectedBand,
     view,
     workspaceWide,
   ]);
 }
 
 export async function cancelActiveComputation() {
-  const activeKind = await scheduler.cancelActive();
-  if (activeKind === "topology") {
-    useAppStore.getState().requestTopologyRefinement(undefined);
-  }
+  await scheduler.cancelActive();
   useAppStore.getState().setProgress({
     phase: "idle",
     fraction: 0,

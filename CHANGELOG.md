@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Development workflow
+
+- Split validation into a seconds-scale `check:fast`, a small Chromium
+  `check:smoke`, and the comprehensive `check:release` matrix so ordinary edit
+  loops do not repeatedly pay for every native, Pyodide, desktop, and mobile
+  test.
+
+### Interface guidance
+
+- Add keyboard-, pointer-, and touch-accessible explanations to every parameter
+  family and primary result panel, including the Wilson loop, 3D surface,
+  upstream property table, and linked state inspector.
+- Base the help copy on HofstadterTools' Hamiltonian, CLI, butterfly,
+  Berry-curvature, Wilson-loop, and quantum-geometry conventions rather than
+  introducing frontend-specific physics definitions.
+
 ### Phase 2 · Stage 0 — correctness and control hardening
 
 - Enforce canonical lattice angles for every named lattice during URL hydration
@@ -19,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Align the flux-denominator slider and number input at the documented
   `q ≤ 199` limit, with every integer denominator selectable.
 - Keep Wannier gap identity separate from band identity in point picking.
-- Document that momentum sampling applies to band grids while butterfly
-  spectra follow the upstream Γ-point convention.
+- Remove the manual momentum-grid control and legacy `samp=` URL output.
+  Internal q- and lattice-aware sampling now keeps the butterfly on the
+  upstream Γ-point convention while choosing an appropriate band preview.
 - Remove the parameter-sidebar privacy callout.
 - Cover malicious honeycomb URLs and responsive WebGL repaint behavior in
   browser tests.
@@ -43,14 +60,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   linked k₂-row selection for the 3D momentum marker.
 - Verify square-lattice q=3, 4, and 5 isolated-band windings against the
   Diophantine Chern convention and the vanishing total group winding.
-- Cross-check Berry and Wilson integers, complete-bundle sums, band grouping,
-  and the largest principal phase step before presenting topology as
-  converged. Under-resolved grids now show the two provisional invariants
-  separately instead of claiming `winding = C`.
-- Add an opt-in, memory-bounded topology refinement that streams two
-  eigenvector rows at a time on an anisotropic grid. The q=31 square case
-  refines from the render grid at 31×31 to 81×121 topology links, recovering
-  the central `C = -30` band without inflating the 3D energy surface.
+- Cross-check Berry and Wilson integers, band grouping, and the largest
+  principal phase step before displaying an invariant; uncertified Chern
+  numbers and Wilson traces stay hidden rather than appearing provisional.
+- Resolve topology automatically for the active band group on a
+  memory-bounded anisotropic grid, streaming only two eigenvector rows at a
+  time and increasing resolution until the invariants certify. The q=31
+  square case automatically reaches 81×179 topology links and recovers the
+  central `C = -30` band without inflating the 3D energy surface.
+- Cache topology by physical parameters and active group so selection changes
+  request only the invariant that is needed; no convergence button or
+  user-facing topology sample count remains.
 
 ### Phase 2 · Stage 3 — band property table
 
@@ -79,6 +99,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add cursor-centered zoom, Shift/middle-drag panning, adaptive energy tick
   precision, and accessible zoom/reset controls to the linked symmetry cut so
   fine dispersion features remain legible at large magnetic denominators.
+- Add automatic, energy-only dispersion refinement with q-aware,
+  eigensolve-budgeted surface grids and zoom-aware symmetry-path detail. At
+  square q=31 it replaces the lightweight preview with a 125×125 surface and
+  124 samples per path leg without allocating a dense eigenvector grid.
+- Reuse cached surface eigensolves when only the linked-cut zoom changes, so
+  finer path detail arrives without recomputing the 3D energy sheet.
+- Interpolate the lifted high-symmetry path from the energy mesh actually on
+  screen, eliminating detached alias spikes, and expose the Γ-path overlay as
+  a labeled toggle.
 
 ### Phase 2 · Stage 5 — single scientific workspace
 

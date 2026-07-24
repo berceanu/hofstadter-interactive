@@ -15,7 +15,7 @@ const wheel = join(
 await pyodide.loadPackage(wheel);
 await pyodide.runPythonAsync(`
 import json
-from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_topology
+from HT.web import compute_bands, compute_butterfly_batch, compute_dispersion, compute_geometry, compute_topology
 `);
 const golden = JSON.parse(
   await readFile(join(root, "tests", "golden", "web_parity.json"), "utf8"),
@@ -162,6 +162,46 @@ if (
   throw new Error("Refined Berry/Wilson invariants disagree in Pyodide");
 }
 
+pyodide.globals.set(
+  "_dispersion_parameters",
+  JSON.stringify({
+    lattice: "square",
+    hoppings: [1],
+    period: 1,
+    theta: [1, 2],
+    alpha: 1,
+    p: 1,
+    q: 5,
+    samples: 11,
+    dispersion_surface_samples: 21,
+    dispersion_path_samples: 24,
+  }),
+);
+const dispersionProxy = pyodide.runPython(
+  "compute_dispersion(json.loads(_dispersion_parameters))",
+);
+const refinedDispersion = dispersionProxy.toJs({
+  dict_converter: Object.fromEntries,
+  create_pyproxies: false,
+});
+dispersionProxy.destroy();
+const dispersionEnergy = Array.from(refinedDispersion.energy);
+if (
+  refinedDispersion.surface_samples !== 21
+  || refinedDispersion.path_samples_per_segment !== 24
+  || dispersionEnergy.length !== 5 * 21 * 21
+  || Array.from(refinedDispersion.path_energy).length !== 5 * 4 * 24
+) {
+  throw new Error("Lazy dispersion refinement shape mismatch in Pyodide");
+}
+for (let band = 0; band < 5; band += 1) {
+  for (let index = 0; index < 21; index += 1) {
+    const first = dispersionEnergy[band * 21 * 21 + index];
+    const periodic = dispersionEnergy[band * 21 * 21 + 20 * 21 + index];
+    assertClose(periodic, first, 1e-9, 1e-10, "dispersion periodic seam");
+  }
+}
+
 console.log(
-  `Pyodide parity passed for ${golden.length} lattice families plus Wilson, refined topology, and geometry.`,
+  `Pyodide parity passed for ${golden.length} lattice families plus Wilson, refined topology, refined dispersion, and geometry.`,
 );

@@ -7,8 +7,14 @@ import {
 } from "react";
 import { BandView } from "./BandView";
 import { ButterflyPlot } from "./ButterflyPlot";
+import { HelpTooltip } from "./HelpTooltip";
 import { LatticeView } from "./LatticeView";
 import { ParameterPanel } from "./ParameterPanel";
+import {
+  bandResultHelp,
+  resultHelp,
+  type HelpCopy,
+} from "./physicsHelp";
 import {
   cancelActiveComputation,
   retryComputeEngine,
@@ -27,8 +33,11 @@ import {
 } from "../utils/exports";
 import { restoreNpzFile } from "../utils/npzImport";
 import {
+  baseTopologyGridSufficient,
+  dispersionComputationKey,
+  dispersionRefinementGrid,
   topologyComputationKey,
-  topologyRefinementGrid,
+  topologyRefinementPlan,
 } from "../compute/computeKeys";
 
 const views: { id: ViewKind; label: string; short: string }[] = [
@@ -86,8 +95,13 @@ function SelectionReadout() {
   if (!point) {
     return (
       <div className="selection-card muted">
-        <span className="eyebrow">STATE INSPECTOR</span>
-        <p>Hover over a spectrum, or click a state to choose its flux.</p>
+        <div>
+          <div className="heading-with-help">
+            <span className="eyebrow">STATE INSPECTOR</span>
+            <HelpTooltip copy={bandResultHelp.inspector} />
+          </div>
+          <p>Hover over a spectrum, or click a state to choose its flux.</p>
+        </div>
       </div>
     );
   }
@@ -99,7 +113,10 @@ function SelectionReadout() {
   return (
     <div className="selection-card">
       <div>
-        <span className="eyebrow">SELECTED STATE</span>
+        <div className="heading-with-help">
+          <span className="eyebrow">SELECTED STATE</span>
+          <HelpTooltip copy={bandResultHelp.inspector} />
+        </div>
         <strong>φ = {numerator}/{parameters.q}</strong>
       </div>
       <dl>
@@ -215,17 +232,43 @@ function BandTools() {
   const surfaceMetric = useAppStore((state) => state.surfaceMetric);
   const setSurfaceMetric = useAppStore((state) => state.setSurfaceMetric);
   if (!bands) return null;
+  const topologyPlan = topologyRefinementPlan(parameters);
   const expectedTopologyKey = topologyComputationKey(
     parameters,
-    topologyRefinementGrid(parameters),
+    selectedBand,
+    topologyPlan,
   );
-  const effectiveTopology =
+  const refinedTopology =
     topologyKey === expectedTopologyKey
       && topology?.baseSamples === bands.samples
       && topology.bands === bands.bands
       ? topology
-      : bands;
-  const topologyTrusted = effectiveTopology.topologyResolved;
+      : undefined;
+  const topologyForBand = (band: number) => {
+    const covered =
+      refinedTopology
+      && (
+        refinedTopology.completeBundle
+        || (
+          refinedTopology.computedGroupStart >= 0
+          && band >= refinedTopology.computedGroupStart
+          && band
+            < refinedTopology.computedGroupStart
+              + refinedTopology.computedGroupSize
+        )
+      );
+    const source = covered ? refinedTopology! : bands;
+    return {
+      chern: source.chern[band] ?? 0,
+      trusted:
+        source.topologyGroupingConsistent
+        && Boolean(source.topologyGroupResolved[band])
+        && (
+          Boolean(covered)
+          || baseTopologyGridSufficient(parameters, bands.samples)
+        ),
+    };
+  };
   return (
     <>
       <label className="band-select">
@@ -235,19 +278,19 @@ function BandTools() {
           value={Math.min(selectedBand, bands.bands - 1)}
           onChange={(event) => setSelectedBand(Number(event.target.value))}
         >
-          {Array.from({ length: bands.bands }, (_, band) => (
-            <option key={band} value={band}>
-              {bands.groupSize[band] > 1
-                ? `${band} · group ${bands.groupStart[band]}–${
-                    bands.groupStart[band] + bands.groupSize[band] - 1
-                  } · C${topologyTrusted ? "g" : "g?"}=${
-                    effectiveTopology.chern[band]
-                  }`
-                : `${band} · C${topologyTrusted ? "" : "?"}=${
-                    effectiveTopology.chern[band]
-                  }`}
-            </option>
-          ))}
+          {Array.from({ length: bands.bands }, (_, band) => {
+            const bandTopology = topologyForBand(band);
+            const chern = bandTopology.trusted ? bandTopology.chern : "…";
+            return (
+              <option key={band} value={band}>
+                {bands.groupSize[band] > 1
+                  ? `${band} · group ${bands.groupStart[band]}–${
+                      bands.groupStart[band] + bands.groupSize[band] - 1
+                    } · Cg=${chern}`
+                  : `${band} · C=${chern}`}
+              </option>
+            );
+          })}
         </select>
       </label>
       <div className="segmented" aria-label="Surface quantity">
@@ -302,6 +345,7 @@ function WorkspacePanel({
   kicker,
   className,
   tools,
+  help,
   children,
 }: {
   id: ViewKind;
@@ -309,10 +353,13 @@ function WorkspacePanel({
   kicker: string;
   className?: string;
   tools?: ReactNode;
+  help: HelpCopy;
   children: ReactNode;
 }) {
   const root = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
+  const selectedBand = useAppStore((state) => state.selectedBand);
+  const bandCutZoom = useAppStore((state) => state.bandCutZoom);
   const setFocus = useAppStore((state) => state.setFocus);
   const colorMode = useAppStore((state) => state.colorMode);
   const cache = useResultCache();
@@ -320,9 +367,18 @@ function WorkspacePanel({
     cache.topologyKey
         === topologyComputationKey(
           parameters,
-          topologyRefinementGrid(parameters),
+          selectedBand,
+          topologyRefinementPlan(parameters),
         )
       ? cache.topology
+      : undefined;
+  const currentDispersion =
+    cache.dispersionKey
+        === dispersionComputationKey(
+          parameters,
+          dispersionRefinementGrid(parameters, bandCutZoom),
+        )
+      ? cache.dispersion
       : undefined;
   const [transparentArt, setTransparentArt] = useState(false);
 
@@ -335,7 +391,10 @@ function WorkspacePanel({
       <header className="workspace-panel-heading">
         <div>
           <span className="eyebrow">{kicker}</span>
-          <h2>{title}</h2>
+          <div className="result-heading-title">
+            <h2>{title}</h2>
+            <HelpTooltip copy={help} />
+          </div>
         </div>
         <div className="workspace-panel-tools">
           {tools}
@@ -362,6 +421,7 @@ function WorkspacePanel({
               cache.lattice,
               cache.geometry,
               currentTopology,
+              currentDispersion,
             )
           }
         >
@@ -378,6 +438,7 @@ function WorkspacePanel({
               cache.lattice,
               cache.geometry,
               currentTopology,
+              currentDispersion,
             )
           }
         >
@@ -469,6 +530,7 @@ function WorkspaceDashboard() {
           title="Lattice / BZ"
           kicker="GEOMETRY"
           className="mini-lattice-panel"
+          help={resultHelp.lattice}
         >
           <LatticeView compact />
         </WorkspacePanel>
@@ -481,6 +543,7 @@ function WorkspaceDashboard() {
           kicker="SPECTRAL HERO"
           className="hero-panel"
           tools={<ButterflyTools />}
+          help={resultHelp.butterfly}
         >
           <ButterflyPlot compact />
         </WorkspacePanel>
@@ -489,6 +552,7 @@ function WorkspaceDashboard() {
           title="Wannier diagram"
           kicker="SHARED FLUX AXIS"
           className="wannier-panel"
+          help={resultHelp.wannier}
         >
           <ButterflyPlot wannier compact />
         </WorkspacePanel>
@@ -501,6 +565,7 @@ function WorkspaceDashboard() {
           kicker="BANDS · WILSON · PROPERTIES"
           className="current-flux-panel"
           tools={<BandTools />}
+          help={resultHelp.bands}
         >
           <BandView compact />
         </WorkspacePanel>
@@ -513,14 +578,25 @@ function WorkspaceDashboard() {
 function FocusedView({ view }: { view: ViewKind }) {
   const exportRoot = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
+  const selectedBand = useAppStore((state) => state.selectedBand);
+  const bandCutZoom = useAppStore((state) => state.bandCutZoom);
   const cache = useResultCache();
   const currentTopology =
     cache.topologyKey
         === topologyComputationKey(
           parameters,
-          topologyRefinementGrid(parameters),
+          selectedBand,
+          topologyRefinementPlan(parameters),
         )
       ? cache.topology
+      : undefined;
+  const currentDispersion =
+    cache.dispersionKey
+        === dispersionComputationKey(
+          parameters,
+          dispersionRefinementGrid(parameters, bandCutZoom),
+        )
+      ? cache.dispersion
       : undefined;
   const colorMode = useAppStore((state) => state.colorMode);
   const [transparentArt, setTransparentArt] = useState(false);
@@ -528,6 +604,7 @@ function FocusedView({ view }: { view: ViewKind }) {
     () => flattenButterfly(cache.butterfly),
     [cache.butterfly],
   );
+  const help = resultHelp[view];
 
   return (
     <main className="workspace focused-workspace">
@@ -536,7 +613,10 @@ function FocusedView({ view }: { view: ViewKind }) {
         <div className="visualization-header">
           <div>
             <span className="eyebrow">LOCAL QUANTUM SPECTRUM</span>
-            <h1>{viewTitle(view)}</h1>
+            <div className="result-heading-title">
+              <h1>{viewTitle(view)}</h1>
+              <HelpTooltip copy={help} />
+            </div>
             <p>
               {parameters.lattice} lattice · t = [
               {parameters.hoppings.join(", ")}] ·{" "}
@@ -576,6 +656,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     cache.lattice,
                     cache.geometry,
                     currentTopology,
+                    currentDispersion,
                   )
                 }
               >
@@ -591,6 +672,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     cache.lattice,
                     cache.geometry,
                     currentTopology,
+                    currentDispersion,
                   )
                 }
               >
@@ -754,6 +836,7 @@ export default function App() {
       data-lattice-request-count={counters.lattice}
       data-geometry-request-count={counters.geometry}
       data-topology-request-count={counters.topology}
+      data-dispersion-request-count={counters.dispersion}
       onDragEnter={(event) => {
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();

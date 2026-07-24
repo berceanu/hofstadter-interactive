@@ -65,10 +65,29 @@ export interface TopologyResult extends TopologyDiagnostics {
   samplesX: number;
   samplesY: number;
   bands: number;
+  computedGroupStart: number;
+  computedGroupSize: number;
+  completeBundle: boolean;
   wilson: Float64Array;
   chern: Int32Array;
   groupStart: Int32Array;
   groupSize: Int32Array;
+  elapsedMs: number;
+}
+
+export interface DispersionResult {
+  requestId: string;
+  baseSamples: number;
+  surfaceSamples: number;
+  pathSamplesPerSegment: number;
+  bands: number;
+  energy: Float64Array;
+  pathX: Float64Array;
+  pathK1: Float64Array;
+  pathK2: Float64Array;
+  pathEnergy: Float64Array;
+  pathTicks: Float64Array;
+  pathLabels: string[];
   elapsedMs: number;
 }
 
@@ -196,6 +215,12 @@ export interface ComputeEngine {
     samplesX: number,
     samplesY: number,
   ): Promise<TopologyResult>;
+  computeDispersion(
+    requestId: string,
+    parameters: ScientificParameters,
+    surfaceSamples: number,
+    pathSamplesPerSegment: number,
+  ): Promise<DispersionResult>;
   computeGeometry(
     requestId: string,
     parameters: ScientificParameters,

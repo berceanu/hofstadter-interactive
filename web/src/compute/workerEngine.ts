@@ -3,6 +3,7 @@ import type {
   BandResult,
   ButterflyChunk,
   ComputeEngine,
+  DispersionResult,
   GeometryResult,
   LatticeResult,
   RuntimeProgress,
@@ -188,6 +189,36 @@ export class PyodideWorkerEngine implements ComputeEngine {
           groups,
           samplesX,
           samplesY,
+        ),
+      );
+      if (this.cancelled.has(requestId)) throw new Error("cancelled");
+      return result;
+    } finally {
+      this.cancelled.delete(requestId);
+      try {
+        await this.remote.clearCancellation(requestId);
+      } catch {
+        // A failed worker will be recreated by the next computation.
+      }
+    }
+  }
+
+  async computeDispersion(
+    requestId: string,
+    parameters: ScientificParameters,
+    surfaceSamples: number,
+    pathSamplesPerSegment: number,
+  ): Promise<DispersionResult> {
+    await this.ensureReady();
+    this.cancelled.delete(requestId);
+    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    try {
+      const result = await this.withRecovery(() =>
+        this.remote.computeDispersion(
+          requestId,
+          parameters,
+          surfaceSamples,
+          pathSamplesPerSegment,
         ),
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");

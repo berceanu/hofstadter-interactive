@@ -19,7 +19,9 @@ from HT.models.hofstadter import Hofstadter
 
 
 _geometry_base_cache: dict[str, Any] | None = None
+_dispersion_surface_cache: dict[str, Any] | None = None
 _GEOMETRY_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
+_DISPERSION_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
 _WILSON_PHASE_STEP_LIMIT = 0.95 * np.pi
 
 
@@ -162,6 +164,7 @@ def _topology_diagnostics(
     groups: list[tuple[int, int]],
     *,
     grouping_consistent: bool = True,
+    require_complete_bundle: bool = True,
 ) -> dict[str, Any]:
     """Cross-check Berry and Wilson invariants without hiding aliasing.
 
@@ -202,11 +205,16 @@ def _topology_diagnostics(
         total_chern += group_chern
         total_winding += group_winding
 
+    requested_groups_resolved = all(
+        bool(group_resolved[start]) for start, _ in groups
+    )
     topology_resolved = bool(
         grouping_consistent
-        and np.all(group_resolved)
-        and total_chern == 0
-        and total_winding == 0
+        and requested_groups_resolved
+        and (
+            not require_complete_bundle
+            or (total_chern == 0 and total_winding == 0)
+        )
     )
     return {
         "topology_resolved": topology_resolved,
@@ -236,6 +244,7 @@ def _topology_groups(
             if int(starts[index]) == index
         ]
 
+    allow_partial = bool(parameters.get("topology_partial", False))
     groups: list[tuple[int, int]] = []
     cursor = 0
     for raw_group in raw_groups:
@@ -244,11 +253,16 @@ def _topology_groups(
         start = int(raw_group[0])
         size = int(raw_group[1])
         end = start + size
-        if start != cursor or size < 1 or end > band_count:
-            raise ValueError("Topology band groups must cover every band once.")
+        valid_start = start >= cursor if allow_partial else start == cursor
+        if not valid_start or size < 1 or end > band_count:
+            raise ValueError(
+                "Topology band groups must be ordered, disjoint, and valid."
+            )
         groups.append((start, end))
         cursor = end
-    if cursor != band_count:
+    if not groups:
+        raise ValueError("At least one topology band group is required.")
+    if not allow_partial and cursor != band_count:
         raise ValueError("Topology band groups do not cover the full spectrum.")
     return groups
 
@@ -258,6 +272,68 @@ def _odd_sample_count(value: Any, fallback: int, maximum: int) -> int:
     if samples % 2 == 0:
         samples = min(maximum, samples + 1)
     return samples
+
+
+def _symmetry_path(
+    model: Hofstadter,
+    reciprocal: np.ndarray,
+    symmetry_points: list[tuple[str, np.ndarray]],
+    band_count: int,
+    points_per_segment: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return a dense, CLI-compatible closed high-symmetry path.
+
+    The path samples every segment with its endpoint omitted because the next
+    segment starts at that same symmetry point.  This mirrors the upstream
+    plotting convention while allowing the inexpensive energy-only refinement
+    to use a much denser path than the eigenvector render grid.
+    """
+
+    segment_samples = max(2, int(points_per_segment))
+    path_blocks: list[np.ndarray] = []
+    path_coordinates: list[np.ndarray] = []
+    path_momenta: list[np.ndarray] = []
+    tick_positions: list[float] = []
+    cursor = 0
+    for index, (_, start) in enumerate(symmetry_points):
+        end = symmetry_points[(index + 1) % len(symmetry_points)][1]
+        fractions = np.linspace(
+            0.0,
+            1.0,
+            segment_samples,
+            endpoint=False,
+        )
+        block = np.empty((band_count, segment_samples), dtype=np.float64)
+        for point_index, fraction in enumerate(fractions):
+            fractional_k = start + (end - start) * fraction
+            momentum = np.matmul(fractional_k, reciprocal)
+            block[:, point_index] = np.sort(
+                np.linalg.eigvalsh(model.hamiltonian(momentum))
+            )
+        path_blocks.append(block)
+        path_momenta.append(
+            start[None, :] + (end - start)[None, :] * fractions[:, None]
+        )
+        path_coordinates.append(
+            np.linspace(
+                float(cursor),
+                float(cursor + segment_samples),
+                segment_samples,
+                endpoint=False,
+            )
+        )
+        tick_positions.append(float(cursor))
+        cursor += segment_samples
+    tick_positions.append(float(cursor))
+    path_matrix = np.hstack(path_blocks)
+    path_momentum_matrix = np.vstack(path_momenta)
+    return (
+        np.concatenate(path_coordinates),
+        np.ascontiguousarray(path_momentum_matrix[:, 0]),
+        np.ascontiguousarray(path_momentum_matrix[:, 1]),
+        path_matrix,
+        np.asarray(tick_positions, dtype=np.float64),
+    )
 
 
 def _gauss_reduce_2d(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -448,38 +524,19 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         _geometry_base_cache = None
 
     points_per_segment = max(24, samples)
-    path_blocks: list[np.ndarray] = []
-    path_coordinates: list[np.ndarray] = []
-    path_momenta: list[np.ndarray] = []
-    tick_positions: list[float] = []
-    cursor = 0
-    for index, (_, start) in enumerate(symmetry_points):
-        end = symmetry_points[(index + 1) % len(symmetry_points)][1]
-        fractions = np.linspace(0.0, 1.0, points_per_segment, endpoint=False)
-        block = np.empty((band_count, points_per_segment), dtype=np.float64)
-        for point_index, fraction in enumerate(fractions):
-            fractional_k = start + (end - start) * fraction
-            momentum = np.matmul(fractional_k, reciprocal)
-            block[:, point_index] = np.sort(
-                np.linalg.eigvalsh(model.hamiltonian(momentum))
-            )
-        path_blocks.append(block)
-        path_momenta.append(
-            start[None, :] + (end - start)[None, :] * fractions[:, None]
-        )
-        path_coordinates.append(
-            np.linspace(
-                float(cursor),
-                float(cursor + points_per_segment),
-                points_per_segment,
-                endpoint=False,
-            )
-        )
-        tick_positions.append(float(cursor))
-        cursor += points_per_segment
-    tick_positions.append(float(cursor))
-    path_matrix = np.hstack(path_blocks)
-    path_momentum_matrix = np.vstack(path_momenta)
+    (
+        path_x,
+        path_k1,
+        path_k2,
+        path_matrix,
+        path_ticks,
+    ) = _symmetry_path(
+        model,
+        reciprocal,
+        symmetry_points,
+        band_count,
+        points_per_segment,
+    )
 
     cli_adjacent_gaps = (
         np.min(values[1:], axis=(1, 2))
@@ -630,16 +687,120 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "property_rows": property_rows,
         "group_rows": group_rows,
         "bgt": band_gap_threshold,
-        "path_x": np.concatenate(path_coordinates),
-        "path_k1": np.ascontiguousarray(path_momentum_matrix[:, 0]),
-        "path_k2": np.ascontiguousarray(path_momentum_matrix[:, 1]),
+        "path_x": path_x,
+        "path_k1": path_k1,
+        "path_k2": path_k2,
         "path_energy": np.ascontiguousarray(path_matrix).ravel(),
-        "path_ticks": np.asarray(tick_positions, dtype=np.float64),
+        "path_ticks": path_ticks,
         "path_labels": labels,
         "reciprocal": np.ascontiguousarray(reciprocal, dtype=np.float64).ravel(),
         "sym_points": sym_points,
         "bz": np.ascontiguousarray(magnetic_bz).ravel(),
         "ordinary_bz": np.ascontiguousarray(ordinary_bz).ravel(),
+    }
+
+
+def compute_dispersion(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Refine energy surfaces and the symmetry cut without eigenvectors.
+
+    Dense Berry/Wilson grids are expensive primarily because they retain and
+    compare full eigenvector matrices.  Dispersion rendering only needs sorted
+    eigenvalues, so this lazy adapter can resolve rapid magnetic-BZ ripples on
+    a substantially finer grid while keeping its transfer and memory costs
+    bounded.  It deliberately does not claim to refine topology or geometry.
+    """
+
+    global _dispersion_surface_cache
+    model = _model(parameters)
+    base_samples = max(5, int(parameters.get("samples", 19)))
+    (
+        band_count,
+        _,
+        _,
+        reciprocal,
+        symmetry_points,
+    ) = model.unit_cell()
+    surface_samples = max(
+        base_samples,
+        _odd_sample_count(
+            parameters.get("dispersion_surface_samples"),
+            base_samples,
+            129,
+        ),
+    )
+    path_samples_per_segment = max(
+        max(24, base_samples),
+        min(
+            513,
+            int(
+                parameters.get(
+                    "dispersion_path_samples",
+                    max(24, base_samples),
+                )
+            ),
+        ),
+    )
+
+    surface_key = _band_grid_key(parameters, surface_samples)
+    cached_surface = (
+        _dispersion_surface_cache
+        if _dispersion_surface_cache is not None
+        and _dispersion_surface_cache.get("key") == surface_key
+        else None
+    )
+    if cached_surface is not None:
+        values = cached_surface["values"]
+    else:
+        values = np.empty(
+            (band_count, surface_samples, surface_samples),
+            dtype=np.float64,
+        )
+        fractions = np.linspace(0.0, 1.0, surface_samples)
+        for ix, frac_x in enumerate(fractions):
+            for iy, frac_y in enumerate(fractions):
+                momentum = np.matmul(
+                    np.array([frac_x, frac_y], dtype=np.float64),
+                    reciprocal,
+                )
+                values[:, ix, iy] = np.sort(
+                    np.linalg.eigvalsh(model.hamiltonian(momentum))
+                )
+        _dispersion_surface_cache = (
+            {"key": surface_key, "values": values}
+            if values.nbytes <= _DISPERSION_CACHE_LIMIT_BYTES
+            else None
+        )
+
+    (
+        path_x,
+        path_k1,
+        path_k2,
+        path_matrix,
+        path_ticks,
+    ) = _symmetry_path(
+        model,
+        reciprocal,
+        symmetry_points,
+        band_count,
+        path_samples_per_segment,
+    )
+    labels = [
+        label.replace("$", "").replace("\\Gamma", "Γ")
+        for label, _ in symmetry_points
+    ]
+    labels.append(labels[0])
+    return {
+        "base_samples": base_samples,
+        "surface_samples": surface_samples,
+        "path_samples_per_segment": path_samples_per_segment,
+        "bands": band_count,
+        "energy": np.ascontiguousarray(values).ravel(),
+        "path_x": path_x,
+        "path_k1": path_k1,
+        "path_k2": path_k2,
+        "path_energy": np.ascontiguousarray(path_matrix).ravel(),
+        "path_ticks": path_ticks,
+        "path_labels": labels,
     }
 
 
@@ -749,15 +910,27 @@ def compute_topology(parameters: dict[str, Any]) -> dict[str, Any]:
         else np.empty(0, dtype=np.float64)
     )
     grouping_consistent = all(
-        end == band_count
-        or refined_gaps[end - 1] > band_gap_threshold
-        for _, end in groups
+        (start == 0 or refined_gaps[start - 1] > band_gap_threshold)
+        and (
+            end == band_count
+            or refined_gaps[end - 1] > band_gap_threshold
+        )
+        for start, end in groups
+    )
+    complete_bundle = (
+        groups[0][0] == 0
+        and groups[-1][1] == band_count
+        and all(
+            groups[index][1] == groups[index + 1][0]
+            for index in range(len(groups) - 1)
+        )
     )
     topology_diagnostics = _topology_diagnostics(
         wilson,
         chern_numbers,
         groups,
         grouping_consistent=grouping_consistent,
+        require_complete_bundle=complete_bundle,
     )
     return {
         "base_samples": base_samples,

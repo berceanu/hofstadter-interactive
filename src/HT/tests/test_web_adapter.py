@@ -11,6 +11,7 @@ from HT.models.hofstadter import Hofstadter
 from HT.web import (
     compute_bands,
     compute_butterfly_batch,
+    compute_dispersion,
     compute_geometry,
     compute_lattice,
     compute_topology,
@@ -148,7 +149,7 @@ def test_square_wilson_winding_matches_diophantine_chern(q):
     assert int(np.sum(winding[group_starts])) == 0
 
 
-def test_square_q31_guard_rejects_aliasing_and_refinement_converges():
+def test_square_q31_guard_refines_the_selected_group_only():
     parameters = {
         "lattice": "square",
         "hoppings": [1.0],
@@ -169,34 +170,114 @@ def test_square_q31_guard_rejects_aliasing_and_refinement_converges():
     )
     assert not base["topology_group_resolved"][15]
 
-    group_starts = np.flatnonzero(
-        base["group_start"] == np.arange(base["bands"])
-    )
-    groups = [
-        [int(start), int(base["group_size"][start])]
-        for start in group_starts
-    ]
+    selected = 15
+    group_start = int(base["group_start"][selected])
+    group_size = int(base["group_size"][group_start])
     refined = compute_topology(
         {
             **parameters,
-            "topology_groups": groups,
+            "topology_groups": [[group_start, group_size]],
+            "topology_partial": True,
             "topology_samples_x": 81,
-            "topology_samples_y": 121,
+            "topology_samples_y": 179,
         }
     )
     expected_chern, _ = chern(1, 31)
 
     assert refined["samples_x"] == 81
-    assert refined["samples_y"] == 121
+    assert refined["samples_y"] == 179
     assert refined["topology_resolved"]
     assert refined["topology_grouping_consistent"]
-    assert refined["topology_total_chern"] == 0
-    assert refined["topology_total_winding"] == 0
-    assert np.all(refined["topology_group_resolved"])
-    assert np.array_equal(refined["chern"], expected_chern)
-    assert np.array_equal(refined["wilson_winding"], expected_chern)
-    assert np.all(
-        refined["wilson_max_step"] < refined["wilson_phase_step_limit"]
+    assert refined["topology_total_chern"] == expected_chern[group_start]
+    assert refined["topology_total_winding"] == expected_chern[group_start]
+    assert np.count_nonzero(refined["topology_group_resolved"]) == group_size
+    assert refined["chern"][group_start] == expected_chern[group_start]
+    assert (
+        refined["wilson_winding"][group_start]
+        == expected_chern[group_start]
+    )
+    assert (
+        refined["wilson_max_step"][group_start]
+        < refined["wilson_phase_step_limit"]
+    )
+
+
+def test_square_q31_dispersion_refinement_resolves_symmetry_path_aliasing():
+    parameters = {
+        "lattice": "square",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 2],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 31,
+        "samples": 17,
+        "bgt": 0.01,
+    }
+    base = compute_bands(parameters)
+    refined = compute_dispersion(
+        {
+            **parameters,
+            "dispersion_surface_samples": 125,
+            "dispersion_path_samples": 124,
+        }
+    )
+
+    assert refined["base_samples"] == 17
+    assert refined["surface_samples"] == 125
+    assert refined["path_samples_per_segment"] == 124
+    assert refined["energy"].shape == (31 * 125 * 125,)
+    assert refined["path_x"].shape == (4 * 124,)
+    assert refined["path_k1"].shape == refined["path_x"].shape
+    assert refined["path_k2"].shape == refined["path_x"].shape
+    assert refined["path_energy"].shape == (31 * 4 * 124,)
+    assert np.isfinite(refined["energy"]).all()
+    assert np.isfinite(refined["path_energy"]).all()
+
+    base_path = base["path_energy"].reshape(31, -1)[14]
+    refined_path = refined["path_energy"].reshape(31, -1)[14]
+    base_segment_samples = base["path_x"].size // 4
+    refined_segment_samples = refined["path_x"].size // 4
+    base_edge = base_path[
+        2 * base_segment_samples : 3 * base_segment_samples
+    ]
+    refined_edge = refined_path[
+        2 * refined_segment_samples : 3 * refined_segment_samples
+    ]
+    assert np.max(np.abs(np.diff(refined_edge))) < (
+        0.5 * np.max(np.abs(np.diff(base_edge)))
+    )
+
+    surface = refined["energy"].reshape(31, 125, 125)
+    assert np.allclose(surface[:, 0], surface[:, -1], rtol=1e-9, atol=1e-11)
+    assert np.allclose(
+        surface[:, :, 0],
+        surface[:, :, -1],
+        rtol=1e-9,
+        atol=1e-11,
+    )
+
+    probe = 2 * refined_segment_samples + 37
+    model = Hofstadter(
+        1,
+        31,
+        t=[1.0],
+        lat="square",
+        alpha=1.0,
+        theta=(1, 2),
+        period=1,
+    )
+    reciprocal = model.unit_cell()[3]
+    momentum = np.matmul(
+        np.array([refined["path_k1"][probe], refined["path_k2"][probe]]),
+        reciprocal,
+    )
+    reference = np.sort(np.linalg.eigvalsh(model.hamiltonian(momentum)))
+    assert np.allclose(
+        refined["path_energy"].reshape(31, -1)[:, probe],
+        reference,
+        rtol=1e-9,
+        atol=1e-11,
     )
 
 

@@ -74,13 +74,6 @@ export function parseUrlState(search = window.location.search) {
     lattice: parsedLattice,
     p: boundedInteger(query, "p", defaultParameters.p, 1, 199),
     q: boundedInteger(query, "q", defaultParameters.q, 2, 199),
-    samples: boundedInteger(
-      query,
-      "samp",
-      defaultParameters.samples,
-      5,
-      41,
-    ),
     hoppings: hoppings.length ? hoppings : defaultParameters.hoppings,
     alpha: Number(query.get("alpha")) || defaultParameters.alpha,
     theta: [
@@ -125,7 +118,6 @@ export function writeUrlState(
   query.set("tn", String(normalized.theta[0]));
   query.set("td", String(normalized.theta[1]));
   query.set("period", String(normalized.period));
-  query.set("samp", String(normalized.samples));
   query.set("bgt", String(normalized.bgt));
   if (normalized.lattice === "custom") {
     query.set(

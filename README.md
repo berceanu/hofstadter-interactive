@@ -15,6 +15,12 @@ so pointer readouts do not require a DOM node or React component per state.
 Each computation has a request ID; stale results are ignored, and progressive
 butterfly work can be cancelled between small Python batches.
 
+Band resolution is automatic. A lightweight q- and lattice-aware preview is
+replaced by finer energy detail for the current zoom, while topology is
+computed only for the active band group and refined until Berry and Wilson
+diagnostics certify it. Sampling and convergence are intentionally not user
+controls.
+
 ## Run locally
 
 ```bash
@@ -27,12 +33,33 @@ npm run dev
 
 ## Validate
 
+Keep the edit loop short:
+
 ```bash
-npm test
-npm run python:test
-npm run test:pyodide
-npm run build
-npm run test:e2e
+npm run check:fast
+```
+
+This runs the frontend unit suite and TypeScript check, normally in a few
+seconds. While editing, run only the regression nearest the change:
+
+```bash
+npm test -- web/src/compute/computeKeys.test.ts
+.venv/bin/python -m pytest -q src/HT/tests/test_web_adapter.py -k dispersion
+npx playwright test --project=chromium -g "automatically resolves an aliased q=31"
+```
+
+Before handing off an integrated browser change, run the small desktop smoke
+set:
+
+```bash
+npm run check:smoke
+```
+
+Reserve the complete native/Pyodide/desktop/mobile matrix for push, deploy, or
+release boundaries:
+
+```bash
+npm run check:release
 npm run audit:report
 npm run benchmark
 ```

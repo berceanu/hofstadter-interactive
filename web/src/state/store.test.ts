@@ -7,7 +7,18 @@ import {
 
 describe("scientific parameter invariants", () => {
   beforeEach(() => {
-    useAppStore.setState({ parameters: { ...defaultParameters } });
+    useAppStore.setState({
+      parameters: { ...defaultParameters },
+      bandCutZoom: 1,
+      computeCounters: {
+        sweeps: 0,
+        bands: 0,
+        lattice: 0,
+        geometry: 0,
+        topology: 0,
+        dispersion: 0,
+      },
+    });
   });
 
   it("keeps the flux numerator inside the selected denominator", () => {
@@ -34,7 +45,7 @@ describe("scientific parameter invariants", () => {
     });
     expect(normalized.alpha).toBe(0.1);
     expect(normalized.period).toBe(1);
-    expect(normalized.samples).toBe(31);
+    expect(normalized.samples).toBe(17);
     expect(normalized.theta).toEqual([1, 2]);
   });
 
@@ -111,15 +122,33 @@ describe("scientific parameter invariants", () => {
     expect(useAppStore.getState().topologicalPalette).toBe("jet");
   });
 
-  it("requests expensive topology refinement separately from band sampling", () => {
-    useAppStore.getState().requestTopologyRefinement("bands-key");
-    useAppStore.getState().incrementComputeCounter("topology");
-    expect(useAppStore.getState().topologyRefinementKey).toBe("bands-key");
-    expect(useAppStore.getState().computeCounters.topology).toBe(1);
+  it("chooses the preview grid from the Hamiltonian size", () => {
+    expect(
+      normalizeParameters({ ...defaultParameters, p: 1, q: 5 }).samples,
+    ).toBe(21);
+    expect(
+      normalizeParameters({ ...defaultParameters, p: 1, q: 31 }).samples,
+    ).toBe(17);
+    expect(
+      normalizeParameters({
+        ...defaultParameters,
+        lattice: "honeycomb",
+        p: 1,
+        q: 31,
+      }).samples,
+    ).toBe(13);
+    expect(
+      normalizeParameters({ ...defaultParameters, p: 1, q: 199 }).samples,
+    ).toBe(7);
+  });
+
+  it("tracks linked-cut zoom as UI detail rather than a scientific parameter", () => {
+    useAppStore.getState().setBandCutZoom(12);
+    expect(useAppStore.getState().bandCutZoom).toBe(12);
     expect(useAppStore.getState().parameters.samples).toBe(
       defaultParameters.samples,
     );
-    useAppStore.getState().requestTopologyRefinement(undefined);
-    expect(useAppStore.getState().topologyRefinementKey).toBeUndefined();
+    expect(useAppStore.getState().computeCounters.dispersion).toBe(0);
+    expect(useAppStore.getState().computeCounters.topology).toBe(0);
   });
 });
