@@ -20,6 +20,7 @@ from HT.models.hofstadter import Hofstadter
 
 _geometry_base_cache: dict[str, Any] | None = None
 _GEOMETRY_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
+_WILSON_PHASE_STEP_LIMIT = 0.95 * np.pi
 
 
 def _normalized_custom_basis(parameters: dict[str, Any]) -> np.ndarray:
@@ -153,6 +154,110 @@ def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
     ):
         return np.asarray(base + list(reversed(base)), dtype=np.int32), True
     return np.zeros(band_count, dtype=np.int32), False
+
+
+def _topology_diagnostics(
+    wilson: np.ndarray,
+    chern_numbers: np.ndarray,
+    groups: list[tuple[int, int]],
+    *,
+    grouping_consistent: bool = True,
+) -> dict[str, Any]:
+    """Cross-check Berry and Wilson invariants without hiding aliasing.
+
+    Wilson phases are sampled on a principal branch.  A winding is trustworthy
+    only when it agrees with the independently integrated Berry flux and no
+    adjacent principal phase step approaches the Nyquist ambiguity at ``pi``.
+    The complete set of group invariants must also sum to zero.
+    """
+
+    band_count = int(chern_numbers.size)
+    winding = np.zeros(band_count, dtype=np.int32)
+    maximum_step = np.full(band_count, np.inf, dtype=np.float64)
+    group_resolved = np.zeros(band_count, dtype=np.uint8)
+    total_chern = 0
+    total_winding = 0
+
+    for start, end in groups:
+        phases = np.asarray(wilson[start], dtype=np.float64)
+        unwrapped = np.unwrap(phases)
+        group_winding = int(
+            np.rint((unwrapped[0] - unwrapped[-1]) / (2 * np.pi))
+        )
+        phase_steps = np.abs(
+            np.angle(np.exp(1j * np.diff(phases)))
+        )
+        group_maximum_step = (
+            float(np.max(phase_steps)) if phase_steps.size else np.inf
+        )
+        group_chern = int(chern_numbers[start])
+        resolved = (
+            grouping_consistent
+            and group_winding == group_chern
+            and group_maximum_step < _WILSON_PHASE_STEP_LIMIT
+        )
+        winding[start:end] = group_winding
+        maximum_step[start:end] = group_maximum_step
+        group_resolved[start:end] = int(resolved)
+        total_chern += group_chern
+        total_winding += group_winding
+
+    topology_resolved = bool(
+        grouping_consistent
+        and np.all(group_resolved)
+        and total_chern == 0
+        and total_winding == 0
+    )
+    return {
+        "topology_resolved": topology_resolved,
+        "topology_group_resolved": group_resolved,
+        "wilson_winding": winding,
+        "wilson_max_step": maximum_step,
+        "topology_total_chern": int(total_chern),
+        "topology_total_winding": int(total_winding),
+        "topology_grouping_consistent": bool(grouping_consistent),
+        "wilson_phase_step_limit": float(_WILSON_PHASE_STEP_LIMIT),
+    }
+
+
+def _topology_groups(
+    parameters: dict[str, Any], band_count: int
+) -> list[tuple[int, int]]:
+    """Return validated ``(start, end)`` groups for a refinement request."""
+
+    raw_groups = parameters.get("topology_groups")
+    if raw_groups is None:
+        base = compute_bands(parameters)
+        starts = np.asarray(base["group_start"], dtype=np.int32)
+        sizes = np.asarray(base["group_size"], dtype=np.int32)
+        raw_groups = [
+            [int(index), int(sizes[index])]
+            for index in range(band_count)
+            if int(starts[index]) == index
+        ]
+
+    groups: list[tuple[int, int]] = []
+    cursor = 0
+    for raw_group in raw_groups:
+        if not isinstance(raw_group, (list, tuple)) or len(raw_group) != 2:
+            raise ValueError("Invalid topology band-group request.")
+        start = int(raw_group[0])
+        size = int(raw_group[1])
+        end = start + size
+        if start != cursor or size < 1 or end > band_count:
+            raise ValueError("Topology band groups must cover every band once.")
+        groups.append((start, end))
+        cursor = end
+    if cursor != band_count:
+        raise ValueError("Topology band groups do not cover the full spectrum.")
+    return groups
+
+
+def _odd_sample_count(value: Any, fallback: int, maximum: int) -> int:
+    samples = max(5, min(maximum, int(value if value is not None else fallback)))
+    if samples % 2 == 0:
+        samples = min(maximum, samples + 1)
+    return samples
 
 
 def _gauss_reduce_2d(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -446,6 +551,11 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
             group_sizes[band] = size
             group_indices[band] = group_index
 
+    topology_diagnostics = _topology_diagnostics(
+        wilson,
+        chern_numbers,
+        groups,
+    )
     band_widths = np.max(values, axis=(1, 2)) - np.min(values, axis=(1, 2))
 
     def gap_width_ratio(gap: float, width: float) -> float | None:
@@ -514,6 +624,7 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "berry": np.ascontiguousarray(berry).ravel(),
         "wilson": np.ascontiguousarray(wilson).ravel(),
         "chern": chern_numbers,
+        **topology_diagnostics,
         "group_start": group_starts,
         "group_size": group_sizes,
         "property_rows": property_rows,
@@ -529,6 +640,135 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         "sym_points": sym_points,
         "bz": np.ascontiguousarray(magnetic_bz).ravel(),
         "ordinary_bz": np.ascontiguousarray(ordinary_bz).ravel(),
+    }
+
+
+def compute_topology(parameters: dict[str, Any]) -> dict[str, Any]:
+    """Refine Berry/Wilson invariants on a memory-bounded rectangular grid.
+
+    The ordinary band request keeps a square grid suitable for rendering.
+    Topology refinement instead streams one transverse momentum row at a time:
+    the loop direction can be refined independently from the more demanding
+    transverse Wilson-phase sampling, and only two eigenvector rows are ever
+    resident.  All links still use the unchanged upstream Berry/Wilson
+    functions.
+    """
+
+    model = _model(parameters)
+    band_count, _, _, reciprocal, _ = model.unit_cell()
+    base_samples = max(5, int(parameters.get("samples", 19)))
+    samples_x = _odd_sample_count(
+        parameters.get("topology_samples_x"),
+        max(
+            2 * base_samples - 1,
+            2 * model.q - 1,
+            min(81, 4 * model.q - 3),
+        ),
+        161,
+    )
+    samples_y = _odd_sample_count(
+        parameters.get("topology_samples_y"),
+        max(samples_x, 4 * model.q - 3),
+        241,
+    )
+    groups = _topology_groups(parameters, band_count)
+    band_gap_threshold = float(parameters.get("bgt", 0.01))
+    if not np.isfinite(band_gap_threshold) or band_gap_threshold < 0:
+        band_gap_threshold = 0.01
+
+    fractions_x = np.linspace(0.0, 1.0, samples_x)
+    fractions_y = np.linspace(0.0, 1.0, samples_y)
+    group_wilson = np.zeros((len(groups), samples_y), dtype=np.float64)
+    group_berry_sum = np.zeros(len(groups), dtype=np.float64)
+    energy_minimum = np.full(band_count, np.inf, dtype=np.float64)
+    energy_maximum = np.full(band_count, -np.inf, dtype=np.float64)
+    previous_vectors: np.ndarray | None = None
+
+    for iy, frac_y in enumerate(fractions_y):
+        row_vectors = np.empty(
+            (band_count, band_count, samples_x),
+            dtype=np.complex128,
+        )
+        for ix, frac_x in enumerate(fractions_x):
+            momentum = np.matmul(
+                np.array([frac_x, frac_y], dtype=np.float64),
+                reciprocal,
+            )
+            eigenvalues, eigenvectors = np.linalg.eigh(
+                model.hamiltonian(momentum)
+            )
+            order = np.argsort(eigenvalues)
+            ordered_values = np.real(eigenvalues[order])
+            energy_minimum = np.minimum(energy_minimum, ordered_values)
+            energy_maximum = np.maximum(energy_maximum, ordered_values)
+            row_vectors[:, :, ix] = eigenvectors[:, order]
+
+        wilson_vectors = row_vectors[:, :, :, None]
+        for group_index, (start, end) in enumerate(groups):
+            group_wilson[group_index, iy] = band_functions.wilson_loop(
+                wilson_vectors,
+                start,
+                0,
+                end - start,
+            )
+
+        if previous_vectors is not None:
+            pair_vectors = np.stack(
+                (previous_vectors, row_vectors),
+                axis=3,
+            )
+            for group_index, (start, end) in enumerate(groups):
+                for ix in range(samples_x - 1):
+                    group_berry_sum[group_index] += (
+                        band_functions.berry_curv(
+                            pair_vectors,
+                            start,
+                            ix,
+                            0,
+                            end - start,
+                        )
+                    )
+        previous_vectors = row_vectors
+
+    chern_numbers = np.zeros(band_count, dtype=np.int32)
+    wilson = np.zeros((band_count, samples_y), dtype=np.float64)
+    group_starts = np.zeros(band_count, dtype=np.int32)
+    group_sizes = np.ones(band_count, dtype=np.int32)
+    for group_index, (start, end) in enumerate(groups):
+        group_chern = int(
+            np.rint(group_berry_sum[group_index] / (2 * np.pi))
+        )
+        chern_numbers[start:end] = group_chern
+        wilson[start:end] = group_wilson[group_index]
+        group_starts[start:end] = start
+        group_sizes[start:end] = end - start
+
+    refined_gaps = (
+        energy_minimum[1:] - energy_maximum[:-1]
+        if band_count > 1
+        else np.empty(0, dtype=np.float64)
+    )
+    grouping_consistent = all(
+        end == band_count
+        or refined_gaps[end - 1] > band_gap_threshold
+        for _, end in groups
+    )
+    topology_diagnostics = _topology_diagnostics(
+        wilson,
+        chern_numbers,
+        groups,
+        grouping_consistent=grouping_consistent,
+    )
+    return {
+        "base_samples": base_samples,
+        "samples_x": samples_x,
+        "samples_y": samples_y,
+        "bands": band_count,
+        "wilson": np.ascontiguousarray(wilson).ravel(),
+        "chern": chern_numbers,
+        "group_start": group_starts,
+        "group_size": group_sizes,
+        **topology_diagnostics,
     }
 
 

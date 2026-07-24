@@ -9,7 +9,12 @@ import { extent } from "../utils/arrays";
 import { extractContourSegments } from "../utils/contours";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
-import type { BandResult } from "../compute/contracts";
+import type { BandResult, TopologyResult } from "../compute/contracts";
+import {
+  bandComputationKey,
+  topologyComputationKey,
+  topologyRefinementGrid,
+} from "../compute/computeKeys";
 
 const TORUS_MAJOR_RADIUS = 1.18;
 const TORUS_REFERENCE_RADIUS = 0.48;
@@ -1161,10 +1166,12 @@ function PropertyTable({
   hoveredBand,
   onHover,
   onSelect,
+  topology,
 }: {
   hoveredBand?: number;
   onHover: (band?: number) => void;
   onSelect: (band: number) => void;
+  topology?: TopologyResult;
 }) {
   const { bands, geometry } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
@@ -1175,6 +1182,8 @@ function PropertyTable({
     (state) => state.setGeometryColumnsExpanded,
   );
   if (!bands) return null;
+  const topologyData = topology ?? bands;
+  const topologyTrusted = topologyData.topologyResolved;
   const geometryMatches =
     geometry?.samples === bands.samples && geometry.bands === bands.bands;
   const geometryByBand = new Map(
@@ -1272,7 +1281,20 @@ function PropertyTable({
                   <td>{formatProperty(row.gap)}</td>
                   <td>{formatProperty(row.gapWidth)}</td>
                   <td>{formatProperty(row.stdB)}</td>
-                  <td>{row.chern}</td>
+                  <td
+                    className={
+                      topologyTrusted ? "" : "topology-under-resolved-value"
+                    }
+                    title={
+                      topologyTrusted
+                        ? "Converged Berry/Wilson Chern invariant"
+                        : "Provisional Berry-grid estimate; topology checks failed"
+                    }
+                  >
+                    {topologyTrusted
+                      ? topologyData.chern[row.band]
+                      : `${topologyData.chern[row.band]}?`}
+                  </td>
                   {geometryColumnsExpanded && (
                     <>
                       <td>{geometryRow ? formatProperty(geometryRow.stdG) : "…"}</td>
@@ -1303,20 +1325,28 @@ function principalPhase(value: number) {
 function WilsonPlot({
   selectedIndex,
   onSelect,
+  topology,
 }: {
   selectedIndex?: number;
   onSelect: (index: number) => void;
+  topology?: TopologyResult;
 }) {
   const { bands } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   if (!bands) return null;
 
-  const samples = bands.samples;
+  const topologyData = topology ?? bands;
+  const samples = topology?.samplesY ?? bands.samples;
   const offset = Math.min(selectedBand, bands.bands - 1) * samples;
   const phases = Array.from(
     { length: samples },
-    (_, index) => principalPhase(bands.wilson[offset + index]),
+    (_, index) => principalPhase(topologyData.wilson[offset + index]),
   );
+  const topologyTrusted =
+    topologyData.topologyResolved
+    && Boolean(topologyData.topologyGroupResolved[selectedBand]);
+  const chern = topologyData.chern[selectedBand] ?? 0;
+  const winding = topologyData.wilsonWinding[selectedBand] ?? 0;
   const x = scaleLinear().domain([0, 1]).range([62, 906]);
   const y = scaleLinear().domain([-Math.PI, Math.PI]).range([216, 28]);
   const lineMaker = line<[number, number]>()
@@ -1355,14 +1385,27 @@ function WilsonPlot({
       aria-label="Wilson eigenphase versus normalized k2"
       data-export-layer
       data-wilson-points={samples}
+      data-topology-status={topologyTrusted ? "resolved" : "under-resolved"}
+      data-topology-source={topology ? "refined" : "base"}
+      data-berry-chern={chern}
+      data-wilson-winding={winding}
       onClick={chooseRow}
     >
       <rect x="0" y="0" width="940" height="252" className="panel-bg" />
       <text x="24" y="22" className="panel-kicker">
-        WILSON LOOP · SELECTED BAND GROUP
+        {topology ? "REFINED " : ""}WILSON LOOP · SELECTED BAND GROUP
       </text>
-      <text x="916" y="22" textAnchor="end" className="wilson-winding">
-        winding = C = {bands.chern[selectedBand] ?? 0}
+      <text
+        x="916"
+        y="22"
+        textAnchor="end"
+        className={`wilson-winding ${
+          topologyTrusted ? "" : "under-resolved"
+        }`}
+      >
+        {topologyTrusted
+          ? `winding = C = ${chern}`
+          : `under-resolved · Cᴮ = ${chern} · W = ${winding}`}
       </text>
       <g className="wilson-grid">
         {[-Math.PI, 0, Math.PI].map((phase) => (
@@ -1413,11 +1456,24 @@ function WilsonPlot({
 }
 
 export function BandView({ compact = false }: { compact?: boolean }) {
-  const { bands, bandsStale, geometry, geometryStale } = useResultCache();
+  const {
+    bands,
+    bandsStale,
+    geometry,
+    geometryStale,
+    topology,
+    topologyKey,
+  } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const metric = useAppStore((state) => state.surfaceMetric);
   const parameters = useAppStore((state) => state.parameters);
+  const topologyRefinementKey = useAppStore(
+    (state) => state.topologyRefinementKey,
+  );
+  const requestTopologyRefinement = useAppStore(
+    (state) => state.requestTopologyRefinement,
+  );
   const [selectedPathIndex, setSelectedPathIndex] = useState(0);
   const [selectedWilsonIndex, setSelectedWilsonIndex] = useState<
     number | undefined
@@ -1436,9 +1492,29 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     setBandCutViewport(resetBandCutViewport);
   }, [bands?.requestId]);
+  useEffect(() => {
+    setSelectedWilsonIndex(undefined);
+    setMarkerSource("path");
+  }, [bands?.requestId, topology?.requestId]);
   if (!bands) {
     return <div className="view-loading">Diagonalizing the momentum grid…</div>;
   }
+  const bandKey = bandComputationKey(parameters);
+  const refinementGrid = topologyRefinementGrid(parameters);
+  const expectedTopologyKey = topologyComputationKey(
+    parameters,
+    refinementGrid,
+  );
+  const refinedTopology =
+    topologyKey === expectedTopologyKey
+      && topology?.baseSamples === bands.samples
+      && topology.bands === bands.bands
+      ? topology
+      : undefined;
+  const effectiveTopology = refinedTopology ?? bands;
+  const topologyRefinementPending =
+    topologyRefinementKey === bandKey && !refinedTopology;
+  const wilsonSamples = refinedTopology?.samplesY ?? bands.samples;
   const count = bands.samples * bands.samples;
   const displayBand = Math.min(
     hoveredBand ?? selectedBand,
@@ -1472,7 +1548,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     ? {
         k1: 0,
         k2:
-          (selectedWilsonIndex ?? 0) / Math.max(1, bands.samples - 1),
+          (selectedWilsonIndex ?? 0) / Math.max(1, wilsonSamples - 1),
       }
     : {
         k1: bands.pathK1[pathIndex] ?? 0,
@@ -1491,6 +1567,17 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   const geometryPending = wantsGeometry && !geometryMatches;
   const torusActive = torusEnabled && !wantsGeometry;
   const torusColorValues = metric === "berry" ? surface : energySurface;
+  const selectedTopologyTrusted =
+    effectiveTopology.topologyResolved
+    && Boolean(effectiveTopology.topologyGroupResolved[displayBand]);
+  const selectedChern = effectiveTopology.chern[displayBand] ?? 0;
+  const topologyDiagnosticTitle = [
+    `Berry ΣC = ${effectiveTopology.topologyTotalChern}`,
+    `Wilson ΣW = ${effectiveTopology.topologyTotalWinding}`,
+    effectiveTopology.topologyGroupingConsistent
+      ? "band grouping unchanged"
+      : "refined grid changes the band grouping",
+  ].join(" · ");
   const zoomBandCut = (factor: number) => {
     setBandCutViewport((current) =>
       boundedBandCutViewport({
@@ -1527,11 +1614,62 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             <h2>Linked band structure</h2>
           </div>
           <div className="band-cut-heading-tools">
+            {(!bands.topologyResolved || refinedTopology) && (
+              <div
+                className="topology-resolution-row"
+                role="status"
+                data-topology-resolution={
+                  refinedTopology?.topologyResolved
+                    ? "resolved"
+                    : topologyRefinementPending
+                      ? "refining"
+                      : "under-resolved"
+                }
+                title={topologyDiagnosticTitle}
+              >
+                <span
+                  className={`topology-resolution-chip ${
+                    refinedTopology?.topologyResolved ? "resolved" : ""
+                  }`}
+                >
+                  {refinedTopology
+                    ? refinedTopology.topologyResolved
+                      ? `topology converged · ${refinedTopology.samplesX}×${refinedTopology.samplesY}`
+                      : `still under-resolved · ${refinedTopology.samplesX}×${refinedTopology.samplesY}`
+                    : topologyRefinementPending
+                      ? `refining topology · ${refinementGrid.samplesX}×${refinementGrid.samplesY}`
+                      : `topology under-resolved · ${bands.samples}×${bands.samples}`}
+                </span>
+                {!refinedTopology && !topologyRefinementPending && (
+                  <button
+                    type="button"
+                    className="topology-refine-button"
+                    onClick={() => requestTopologyRefinement(bandKey)}
+                    title={
+                      refinementGrid.capped
+                        ? "Run a capped high-cost topology grid; very large q may remain under-resolved"
+                        : "Run a higher-cost, memory-bounded Berry/Wilson convergence grid"
+                    }
+                  >
+                    Refine {refinementGrid.samplesX}×{refinementGrid.samplesY}
+                  </button>
+                )}
+              </div>
+            )}
             <div className="band-cut-heading-row">
-              <span className="chern-badge">
+              <span
+                className={`chern-badge ${
+                  selectedTopologyTrusted ? "" : "under-resolved"
+                }`}
+                title={
+                  selectedTopologyTrusted
+                    ? "Berry and Wilson invariants converged"
+                    : "Provisional value: topology convergence checks failed"
+                }
+              >
                 {grouped
-                  ? `C${groupStart}–${groupLast} = ${bands.chern[displayBand] ?? 0}`
-                  : `C = ${bands.chern[displayBand] ?? 0}`}
+                  ? `C${selectedTopologyTrusted ? "" : "?"}${groupStart}–${groupLast} = ${selectedChern}`
+                  : `C${selectedTopologyTrusted ? "" : "?"} = ${selectedChern}`}
               </span>
               <div
                 className="band-cut-zoom-controls"
@@ -1595,6 +1733,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             setSelectedWilsonIndex(index);
             setMarkerSource("wilson");
           }}
+          topology={refinedTopology}
         />
       </section>
       <section className="band-panel surface-panel" data-plot-export>
@@ -1743,6 +1882,10 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             contoursEnabled
               ? "group-resolved Fubini–Study metric · field + high-contrast contours projected below"
               : "group-resolved Fubini–Study metric · finite-difference projector derivatives"
+          ) : metric === "berry" && !selectedTopologyTrusted ? (
+            refinedTopology
+              ? "topology still under-resolved · Berry field is qualitative at the render-grid resolution"
+              : "topology under-resolved · Berry field is qualitative until the separate refinement converges"
           ) : metric === "berry" && grouped ? (
             <>
             Non-Abelian Berry flux for bands {groupStart}–{groupLast}
@@ -1767,6 +1910,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           setSelectedBand(band);
           setHoveredBand(undefined);
         }}
+        topology={refinedTopology}
       />
     </div>
   );

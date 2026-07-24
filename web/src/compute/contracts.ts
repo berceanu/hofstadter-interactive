@@ -48,7 +48,31 @@ export interface ButterflyResult {
   elapsedMs: number;
 }
 
-export interface BandResult {
+export interface TopologyDiagnostics {
+  topologyResolved: boolean;
+  topologyGroupResolved: Uint8Array;
+  wilsonWinding: Int32Array;
+  wilsonMaxStep: Float64Array;
+  topologyTotalChern: number;
+  topologyTotalWinding: number;
+  topologyGroupingConsistent: boolean;
+  wilsonPhaseStepLimit: number;
+}
+
+export interface TopologyResult extends TopologyDiagnostics {
+  requestId: string;
+  baseSamples: number;
+  samplesX: number;
+  samplesY: number;
+  bands: number;
+  wilson: Float64Array;
+  chern: Int32Array;
+  groupStart: Int32Array;
+  groupSize: Int32Array;
+  elapsedMs: number;
+}
+
+export interface BandResult extends TopologyDiagnostics {
   requestId: string;
   samples: number;
   bands: number;
@@ -165,6 +189,13 @@ export interface ComputeEngine {
     requestId: string,
     parameters: ScientificParameters,
   ): Promise<BandResult>;
+  computeTopology(
+    requestId: string,
+    parameters: ScientificParameters,
+    groups: [number, number][],
+    samplesX: number,
+    samplesY: number,
+  ): Promise<TopologyResult>;
   computeGeometry(
     requestId: string,
     parameters: ScientificParameters,

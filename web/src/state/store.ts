@@ -35,11 +35,13 @@ interface AppState {
     bands: number;
     lattice: number;
     geometry: number;
+    topology: number;
   };
   colorMode: ButterflyColorMode;
   topologicalPalette: TopologicalPalette;
   surfaceMetric: SurfaceMetric;
   geometryColumnsExpanded: boolean;
+  topologyRefinementKey?: string;
   selectedBand: number;
   selectedPoint?: SelectedPoint;
   progress: RuntimeProgress;
@@ -56,12 +58,13 @@ interface AppState {
   setWorkspaceWide: (wide: boolean) => void;
   setFluxTransform: (transform: { zoom: number; pan: number }) => void;
   incrementComputeCounter: (
-    kind: "sweeps" | "bands" | "lattice" | "geometry",
+    kind: "sweeps" | "bands" | "lattice" | "geometry" | "topology",
   ) => void;
   setColorMode: (mode: ButterflyColorMode) => void;
   setTopologicalPalette: (palette: TopologicalPalette) => void;
   setSurfaceMetric: (metric: SurfaceMetric) => void;
   setGeometryColumnsExpanded: (expanded: boolean) => void;
+  requestTopologyRefinement: (bandKey?: string) => void;
   setSelectedBand: (band: number) => void;
   setSelectedPoint: (point?: SelectedPoint) => void;
   setProgress: (progress: RuntimeProgress) => void;
@@ -239,11 +242,13 @@ export const useAppStore = create<AppState>((set) => ({
     bands: 0,
     lattice: 0,
     geometry: 0,
+    topology: 0,
   },
   colorMode: "spectral",
   topologicalPalette: "avron",
   surfaceMetric: "energy",
   geometryColumnsExpanded: false,
+  topologyRefinementKey: undefined,
   selectedBand: 0,
   progress: {
     phase: "idle",
@@ -299,6 +304,8 @@ export const useAppStore = create<AppState>((set) => ({
   setSurfaceMetric: (surfaceMetric) => set({ surfaceMetric }),
   setGeometryColumnsExpanded: (geometryColumnsExpanded) =>
     set({ geometryColumnsExpanded }),
+  requestTopologyRefinement: (topologyRefinementKey) =>
+    set({ topologyRefinementKey }),
   setSelectedBand: (selectedBand) => set({ selectedBand }),
   setSelectedPoint: (selectedPoint) => set({ selectedPoint }),
   setProgress: (progress) => set({ progress }),

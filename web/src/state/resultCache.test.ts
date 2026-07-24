@@ -3,6 +3,7 @@ import type {
   BandResult,
   ButterflyChunk,
   LatticeResult,
+  TopologyResult,
 } from "../compute/contracts";
 import { ResultCache } from "./resultCache";
 
@@ -75,5 +76,24 @@ describe("ResultCache stale-result behavior", () => {
     expect(cache.expectBands("a")).toBe(true);
     expect(cache.getSnapshot().bands?.requestId).toBe("bands-a");
     expect(cache.getSnapshot().bandsStale).toBe(false);
+  });
+
+  it("keeps refined topology keyed separately from the render band grid", () => {
+    const cache = new ResultCache();
+    cache.expectTopology("topology-a");
+    cache.setTopology(
+      { requestId: "topology-result-a" } as TopologyResult,
+      "topology-a",
+    );
+
+    cache.expectTopology("topology-b");
+    cache.beginTopology("topology-b");
+    expect(cache.getSnapshot().topology?.requestId).toBe(
+      "topology-result-a",
+    );
+    expect(cache.getSnapshot().topologyStale).toBe(true);
+
+    expect(cache.expectTopology("topology-a")).toBe(true);
+    expect(cache.getSnapshot().topologyStale).toBe(false);
   });
 });

@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   linked k₂-row selection for the 3D momentum marker.
 - Verify square-lattice q=3, 4, and 5 isolated-band windings against the
   Diophantine Chern convention and the vanishing total group winding.
+- Cross-check Berry and Wilson integers, complete-bundle sums, band grouping,
+  and the largest principal phase step before presenting topology as
+  converged. Under-resolved grids now show the two provisional invariants
+  separately instead of claiming `winding = C`.
+- Add an opt-in, memory-bounded topology refinement that streams two
+  eigenvector rows at a time on an anisotropic grid. The q=31 square case
+  refines from the render grid at 31×31 to 81×121 topology links, recovering
+  the central `C = -30` band without inflating the 3D energy surface.
 
 ### Phase 2 · Stage 3 — band property table
 

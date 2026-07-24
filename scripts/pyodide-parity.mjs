@@ -15,7 +15,7 @@ const wheel = join(
 await pyodide.loadPackage(wheel);
 await pyodide.runPythonAsync(`
 import json
-from HT.web import compute_bands, compute_butterfly_batch, compute_geometry
+from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_topology
 `);
 const golden = JSON.parse(
   await readFile(join(root, "tests", "golden", "web_parity.json"), "utf8"),
@@ -124,6 +124,44 @@ advanced.probe_indices.forEach((index, probe) => {
   assertClose(gxy[index], advanced.gxy[probe], 1e-6, 1e-9, `gxy[${index}]`);
 });
 
+pyodide.globals.set(
+  "_topology_parameters",
+  JSON.stringify({
+    lattice: "square",
+    hoppings: [1],
+    period: 1,
+    theta: [1, 2],
+    alpha: 1,
+    p: 1,
+    q: 5,
+    samples: 11,
+    bgt: 0.01,
+  }),
+);
+const topologyProxy = pyodide.runPython(
+  "compute_topology(json.loads(_topology_parameters))",
+);
+const refinedTopology = topologyProxy.toJs({
+  dict_converter: Object.fromEntries,
+  create_pyproxies: false,
+});
+topologyProxy.destroy();
+if (
+  !refinedTopology.topology_resolved
+  || refinedTopology.samples_x !== 21
+  || refinedTopology.samples_y !== 21
+) {
+  throw new Error("Lazy topology refinement did not converge in Pyodide");
+}
+const refinedChern = Array.from(refinedTopology.chern);
+const refinedWinding = Array.from(refinedTopology.wilson_winding);
+if (
+  refinedChern.some((value, index) => value !== refinedWinding[index])
+  || refinedChern.reduce((sum, value) => sum + value, 0) !== 0
+) {
+  throw new Error("Refined Berry/Wilson invariants disagree in Pyodide");
+}
+
 console.log(
-  `Pyodide parity passed for ${golden.length} lattice families plus Wilson and geometry.`,
+  `Pyodide parity passed for ${golden.length} lattice families plus Wilson, refined topology, and geometry.`,
 );

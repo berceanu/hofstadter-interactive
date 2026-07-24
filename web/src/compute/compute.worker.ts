@@ -9,6 +9,7 @@ import type {
   LatticeResult,
   RuntimeProgress,
   ScientificParameters,
+  TopologyResult,
 } from "./contracts";
 
 type ProgressCallback = ((progress: RuntimeProgress) => void) & ProxyMarked;
@@ -33,6 +34,14 @@ interface PythonBands {
   berry: Float64Array;
   wilson: Float64Array;
   chern: Int32Array;
+  topology_resolved: boolean;
+  topology_group_resolved: Uint8Array;
+  wilson_winding: Int32Array;
+  wilson_max_step: Float64Array;
+  topology_total_chern: number;
+  topology_total_winding: number;
+  topology_grouping_consistent: boolean;
+  wilson_phase_step_limit: number;
   group_start: Int32Array;
   group_size: Int32Array;
   property_rows: PythonPropertyRow[];
@@ -48,6 +57,25 @@ interface PythonBands {
   sym_points: PythonSymmetryPoint[];
   bz: Float64Array;
   ordinary_bz: Float64Array;
+}
+
+interface PythonTopology {
+  base_samples: number;
+  samples_x: number;
+  samples_y: number;
+  bands: number;
+  wilson: Float64Array;
+  chern: Int32Array;
+  group_start: Int32Array;
+  group_size: Int32Array;
+  topology_resolved: boolean;
+  topology_group_resolved: Uint8Array;
+  wilson_winding: Int32Array;
+  wilson_max_step: Float64Array;
+  topology_total_chern: number;
+  topology_total_winding: number;
+  topology_grouping_consistent: boolean;
+  wilson_phase_step_limit: number;
 }
 
 interface PythonGeometryRow {
@@ -134,7 +162,7 @@ function toPlain<T>(value: unknown): T {
 
 function runAdapter<T>(
   functionName: string,
-  parameters: ScientificParameters,
+  parameters: object,
   extraArguments = "",
 ): T {
   if (!runtime) {
@@ -195,7 +223,7 @@ await micropip.install(_hh_wheel_url, deps=False)
       }
       await runtime.runPythonAsync(`
 import json
-from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_lattice
+from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, compute_lattice, compute_topology
 `);
       onProgress({
         phase: "ready",
@@ -266,6 +294,18 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, com
       berry: new Float64Array(result.berry),
       wilson: new Float64Array(result.wilson),
       chern: new Int32Array(result.chern),
+      topologyResolved: Boolean(result.topology_resolved),
+      topologyGroupResolved: new Uint8Array(
+        result.topology_group_resolved,
+      ),
+      wilsonWinding: new Int32Array(result.wilson_winding),
+      wilsonMaxStep: new Float64Array(result.wilson_max_step),
+      topologyTotalChern: Number(result.topology_total_chern),
+      topologyTotalWinding: Number(result.topology_total_winding),
+      topologyGroupingConsistent: Boolean(
+        result.topology_grouping_consistent,
+      ),
+      wilsonPhaseStepLimit: Number(result.wilson_phase_step_limit),
       groupStart: new Int32Array(result.group_start),
       groupSize: new Int32Array(result.group_size),
       propertyRows: Array.from(result.property_rows, (row) => ({
@@ -311,6 +351,9 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, com
       bands.berry.buffer,
       bands.wilson.buffer,
       bands.chern.buffer,
+      bands.topologyGroupResolved.buffer,
+      bands.wilsonWinding.buffer,
+      bands.wilsonMaxStep.buffer,
       bands.groupStart.buffer,
       bands.groupSize.buffer,
       bands.pathX.buffer,
@@ -321,6 +364,58 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_geometry, com
       bands.reciprocal.buffer,
       bands.bz.buffer,
       bands.ordinaryBz.buffer,
+    ]);
+  },
+
+  async computeTopology(
+    requestId: string,
+    parameters: ScientificParameters,
+    groups: [number, number][],
+    samplesX: number,
+    samplesY: number,
+  ): Promise<TopologyResult> {
+    if (cancelled.has(requestId)) {
+      throw new Error("cancelled");
+    }
+    const started = performance.now();
+    const result = runAdapter<PythonTopology>("compute_topology", {
+      ...parameters,
+      topology_groups: groups,
+      topology_samples_x: samplesX,
+      topology_samples_y: samplesY,
+    });
+    const topology: TopologyResult = {
+      requestId,
+      baseSamples: Number(result.base_samples),
+      samplesX: Number(result.samples_x),
+      samplesY: Number(result.samples_y),
+      bands: Number(result.bands),
+      wilson: new Float64Array(result.wilson),
+      chern: new Int32Array(result.chern),
+      groupStart: new Int32Array(result.group_start),
+      groupSize: new Int32Array(result.group_size),
+      topologyResolved: Boolean(result.topology_resolved),
+      topologyGroupResolved: new Uint8Array(
+        result.topology_group_resolved,
+      ),
+      wilsonWinding: new Int32Array(result.wilson_winding),
+      wilsonMaxStep: new Float64Array(result.wilson_max_step),
+      topologyTotalChern: Number(result.topology_total_chern),
+      topologyTotalWinding: Number(result.topology_total_winding),
+      topologyGroupingConsistent: Boolean(
+        result.topology_grouping_consistent,
+      ),
+      wilsonPhaseStepLimit: Number(result.wilson_phase_step_limit),
+      elapsedMs: performance.now() - started,
+    };
+    return transfer(topology, [
+      topology.wilson.buffer,
+      topology.chern.buffer,
+      topology.groupStart.buffer,
+      topology.groupSize.buffer,
+      topology.topologyGroupResolved.buffer,
+      topology.wilsonWinding.buffer,
+      topology.wilsonMaxStep.buffer,
     ]);
   },
 

@@ -110,4 +110,16 @@ describe("scientific parameter invariants", () => {
     useAppStore.getState().setTopologicalPalette("jet");
     expect(useAppStore.getState().topologicalPalette).toBe("jet");
   });
+
+  it("requests expensive topology refinement separately from band sampling", () => {
+    useAppStore.getState().requestTopologyRefinement("bands-key");
+    useAppStore.getState().incrementComputeCounter("topology");
+    expect(useAppStore.getState().topologyRefinementKey).toBe("bands-key");
+    expect(useAppStore.getState().computeCounters.topology).toBe(1);
+    expect(useAppStore.getState().parameters.samples).toBe(
+      defaultParameters.samples,
+    );
+    useAppStore.getState().requestTopologyRefinement(undefined);
+    expect(useAppStore.getState().topologyRefinementKey).toBeUndefined();
+  });
 });

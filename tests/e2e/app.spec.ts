@@ -158,7 +158,7 @@ test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }
 
 test("uses gauge-invariant Chern groups for touching bands", async ({ page }) => {
   await page.goto(
-    "/?view=bands&lat=kagome&p=1&q=3&t=1&alpha=1&tn=1&td=3&period=8&samp=7",
+    "/?view=bands&lat=kagome&p=1&q=3&t=1&alpha=1&tn=1&td=3&period=8&samp=17",
   );
   await expect(page.locator(".runtime-status")).toContainText(
     "Band grid complete",
@@ -487,7 +487,7 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
   page,
 }) => {
   await page.goto(
-    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
+    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=17",
   );
   await expect(page.locator(".runtime-status")).toContainText(
     "Band grid complete",
@@ -496,7 +496,7 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
   const wilson = page.getByRole("img", {
     name: "Wilson eigenphase versus normalized k2",
   });
-  await expect(wilson).toHaveAttribute("data-wilson-points", "11");
+  await expect(wilson).toHaveAttribute("data-wilson-points", "17");
   await expect(wilson).toContainText("winding = C = 1");
   const bounds = await wilson.boundingBox();
   expect(bounds).not.toBeNull();
@@ -507,9 +507,74 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
     },
   });
   await expect(page.locator(".surface-panel .surface-hint")).toContainText(
-    "0.700",
+    "0.750",
   );
   await expect(wilson.locator(".wilson-marker")).toHaveCount(1);
+});
+
+test("guards and refines an aliased q=31 Wilson loop", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto(
+    "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&samp=31&bgt=0.01",
+  );
+  await expect(page.locator(".runtime-status")).toContainText(
+    "Band grid complete",
+    { timeout: 30_000 },
+  );
+  await page.getByLabel("Band", { exact: true }).selectOption("15");
+
+  const wilson = page.getByRole("img", {
+    name: "Wilson eigenphase versus normalized k2",
+  });
+  await expect(wilson).toHaveAttribute("data-wilson-points", "31");
+  await expect(wilson).toHaveAttribute(
+    "data-topology-status",
+    "under-resolved",
+  );
+  await expect(wilson).toContainText("under-resolved");
+  await expect(wilson).not.toContainText("winding = C");
+  await expect(page.locator(".topology-resolution-row")).toHaveAttribute(
+    "data-topology-resolution",
+    "under-resolved",
+  );
+  await expect(page.locator(".app-shell")).toHaveAttribute(
+    "data-topology-request-count",
+    "0",
+  );
+  const bandRequests = await page.locator(".app-shell").getAttribute(
+    "data-band-request-count",
+  );
+  const sweepRequests = await page.locator(".app-shell").getAttribute(
+    "data-sweep-count",
+  );
+
+  await page.getByRole("button", { name: "Refine 81×121" }).click();
+  await expect(page.locator(".app-shell")).toHaveAttribute(
+    "data-topology-request-count",
+    "1",
+  );
+  await expect(page.locator(".runtime-status")).toContainText(
+    "Topology converged",
+    { timeout: 90_000 },
+  );
+  await expect(page.locator(".topology-resolution-row")).toHaveAttribute(
+    "data-topology-resolution",
+    "resolved",
+  );
+  await expect(wilson).toHaveAttribute("data-wilson-points", "121");
+  await expect(wilson).toHaveAttribute("data-topology-source", "refined");
+  await expect(wilson).toHaveAttribute("data-topology-status", "resolved");
+  await expect(wilson).toHaveAttribute("data-berry-chern", "-30");
+  await expect(wilson).toHaveAttribute("data-wilson-winding", "-30");
+  await expect(wilson).toContainText("winding = C = -30");
+  await expect(page.locator(".app-shell")).toHaveAttribute(
+    "data-band-request-count",
+    bandRequests ?? "0",
+  );
+  await expect(page.locator(".app-shell")).toHaveAttribute(
+    "data-sweep-count",
+    sweepRequests ?? "0",
+  );
 });
 
 test("links property-table hover and selection to the band group", async ({

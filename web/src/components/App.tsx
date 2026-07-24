@@ -26,6 +26,10 @@ import {
   exportPng,
 } from "../utils/exports";
 import { restoreNpzFile } from "../utils/npzImport";
+import {
+  topologyComputationKey,
+  topologyRefinementGrid,
+} from "../compute/computeKeys";
 
 const views: { id: ViewKind; label: string; short: string }[] = [
   { id: "butterfly", label: "Butterfly", short: "01" },
@@ -204,12 +208,24 @@ function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
 }
 
 function BandTools() {
-  const { bands } = useResultCache();
+  const { bands, topology, topologyKey } = useResultCache();
+  const parameters = useAppStore((state) => state.parameters);
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const surfaceMetric = useAppStore((state) => state.surfaceMetric);
   const setSurfaceMetric = useAppStore((state) => state.setSurfaceMetric);
   if (!bands) return null;
+  const expectedTopologyKey = topologyComputationKey(
+    parameters,
+    topologyRefinementGrid(parameters),
+  );
+  const effectiveTopology =
+    topologyKey === expectedTopologyKey
+      && topology?.baseSamples === bands.samples
+      && topology.bands === bands.bands
+      ? topology
+      : bands;
+  const topologyTrusted = effectiveTopology.topologyResolved;
   return (
     <>
       <label className="band-select">
@@ -224,8 +240,12 @@ function BandTools() {
               {bands.groupSize[band] > 1
                 ? `${band} · group ${bands.groupStart[band]}–${
                     bands.groupStart[band] + bands.groupSize[band] - 1
-                  } · Cg=${bands.chern[band]}`
-                : `${band} · C=${bands.chern[band]}`}
+                  } · C${topologyTrusted ? "g" : "g?"}=${
+                    effectiveTopology.chern[band]
+                  }`
+                : `${band} · C${topologyTrusted ? "" : "?"}=${
+                    effectiveTopology.chern[band]
+                  }`}
             </option>
           ))}
         </select>
@@ -296,6 +316,14 @@ function WorkspacePanel({
   const setFocus = useAppStore((state) => state.setFocus);
   const colorMode = useAppStore((state) => state.colorMode);
   const cache = useResultCache();
+  const currentTopology =
+    cache.topologyKey
+        === topologyComputationKey(
+          parameters,
+          topologyRefinementGrid(parameters),
+        )
+      ? cache.topology
+      : undefined;
   const [transparentArt, setTransparentArt] = useState(false);
 
   return (
@@ -333,6 +361,7 @@ function WorkspacePanel({
               cache.bands,
               cache.lattice,
               cache.geometry,
+              currentTopology,
             )
           }
         >
@@ -348,6 +377,7 @@ function WorkspacePanel({
               cache.bands,
               cache.lattice,
               cache.geometry,
+              currentTopology,
             )
           }
         >
@@ -484,6 +514,14 @@ function FocusedView({ view }: { view: ViewKind }) {
   const exportRoot = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
   const cache = useResultCache();
+  const currentTopology =
+    cache.topologyKey
+        === topologyComputationKey(
+          parameters,
+          topologyRefinementGrid(parameters),
+        )
+      ? cache.topology
+      : undefined;
   const colorMode = useAppStore((state) => state.colorMode);
   const [transparentArt, setTransparentArt] = useState(false);
   const butterfly = useMemo(
@@ -537,6 +575,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     cache.bands,
                     cache.lattice,
                     cache.geometry,
+                    currentTopology,
                   )
                 }
               >
@@ -551,6 +590,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     cache.bands,
                     cache.lattice,
                     cache.geometry,
+                    currentTopology,
                   )
                 }
               >
@@ -713,6 +753,7 @@ export default function App() {
       data-band-request-count={counters.bands}
       data-lattice-request-count={counters.lattice}
       data-geometry-request-count={counters.geometry}
+      data-topology-request-count={counters.topology}
       onDragEnter={(event) => {
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();

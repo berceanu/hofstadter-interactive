@@ -13,6 +13,7 @@ from HT.web import (
     compute_butterfly_batch,
     compute_geometry,
     compute_lattice,
+    compute_topology,
 )
 
 
@@ -85,6 +86,12 @@ def test_band_and_lattice_contracts_are_finite():
     assert bands["wilson"].shape == (3 * 7,)
     assert np.isfinite(bands["energy"]).all()
     assert bands["chern"].shape == (3,)
+    assert bands["topology_resolved"]
+    assert bands["topology_group_resolved"].shape == (3,)
+    assert bands["wilson_winding"].shape == (3,)
+    assert bands["wilson_max_step"].shape == (3,)
+    assert bands["topology_total_chern"] == 0
+    assert bands["topology_total_winding"] == 0
     assert bands["group_start"].shape == (3,)
     assert bands["group_size"].shape == (3,)
     assert bands["path_k1"].shape == bands["path_x"].shape
@@ -139,6 +146,58 @@ def test_square_wilson_winding_matches_diophantine_chern(q):
         result["group_start"] == np.arange(result["group_start"].size)
     )
     assert int(np.sum(winding[group_starts])) == 0
+
+
+def test_square_q31_guard_rejects_aliasing_and_refinement_converges():
+    parameters = {
+        "lattice": "square",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 2],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 31,
+        "samples": 31,
+        "bgt": 0.01,
+    }
+    base = compute_bands(parameters)
+    assert not base["topology_resolved"]
+    assert (
+        base["topology_total_chern"] != 0
+        or base["topology_total_winding"] != 0
+        or not np.all(base["topology_group_resolved"])
+    )
+    assert not base["topology_group_resolved"][15]
+
+    group_starts = np.flatnonzero(
+        base["group_start"] == np.arange(base["bands"])
+    )
+    groups = [
+        [int(start), int(base["group_size"][start])]
+        for start in group_starts
+    ]
+    refined = compute_topology(
+        {
+            **parameters,
+            "topology_groups": groups,
+            "topology_samples_x": 81,
+            "topology_samples_y": 121,
+        }
+    )
+    expected_chern, _ = chern(1, 31)
+
+    assert refined["samples_x"] == 81
+    assert refined["samples_y"] == 121
+    assert refined["topology_resolved"]
+    assert refined["topology_grouping_consistent"]
+    assert refined["topology_total_chern"] == 0
+    assert refined["topology_total_winding"] == 0
+    assert np.all(refined["topology_group_resolved"])
+    assert np.array_equal(refined["chern"], expected_chern)
+    assert np.array_equal(refined["wilson_winding"], expected_chern)
+    assert np.all(
+        refined["wilson_max_step"] < refined["wilson_phase_step_limit"]
+    )
 
 
 def test_band_property_rows_match_upstream_cli_definitions():

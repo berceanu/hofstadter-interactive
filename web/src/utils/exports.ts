@@ -4,6 +4,7 @@ import type {
   GeometryResult,
   LatticeResult,
   ScientificParameters,
+  TopologyResult,
   ViewKind,
 } from "../compute/contracts";
 import type { ButterflyArrays } from "./arrays";
@@ -36,6 +37,7 @@ export function exportCsv(
   bands?: BandResult,
   lattice?: LatticeResult,
   geometry?: GeometryResult,
+  topology?: TopologyResult,
 ) {
   const rows: string[] = [];
   if ((view === "butterfly" || view === "wannier") && butterfly) {
@@ -71,6 +73,12 @@ export function exportCsv(
     }
   } else if (view === "bands" && bands) {
     rows.push("band_properties");
+    const effectiveTopology =
+      topology?.baseSamples === bands.samples
+        && topology.bands === bands.bands
+        ? topology
+        : bands;
+    const topologySource = effectiveTopology === bands ? "render" : "refined";
     const includeGeometry =
       geometry?.samples === bands.samples && geometry.bands === bands.bands;
     const geometryByBand = new Map(
@@ -89,6 +97,8 @@ export function exportCsv(
         "gap_width",
         "std_B",
         "C",
+        "topology_resolved",
+        "topology_source",
         "bgt",
         ...(includeGeometry
           ? [
@@ -115,7 +125,9 @@ export function exportCsv(
           row.gap ?? "",
           row.gapWidth ?? "",
           row.stdB,
-          row.chern,
+          effectiveTopology.chern[row.band],
+          effectiveTopology.topologyResolved,
+          topologySource,
           bands.bgt,
           ...(geometryRow
             ? [
@@ -133,7 +145,7 @@ export function exportCsv(
     }
     rows.push("", "surface_data");
     rows.push(
-      "band,k1_index,k2_index,energy,berry_flux,chern,group_start,group_size",
+      "band,k1_index,k2_index,energy,berry_flux,chern,topology_resolved,topology_source,group_start,group_size",
     );
     for (let band = 0; band < bands.bands; band += 1) {
       for (let ix = 0; ix < bands.samples; ix += 1) {
@@ -147,7 +159,9 @@ export function exportCsv(
               iy,
               bands.energy[index],
               bands.berry[index],
-              bands.chern[band],
+              effectiveTopology.chern[band],
+              effectiveTopology.topologyResolved,
+              topologySource,
               bands.groupStart[band],
               bands.groupSize[band],
             ].join(","),
@@ -183,6 +197,7 @@ export function exportNpz(
   bands?: BandResult,
   lattice?: LatticeResult,
   geometry?: GeometryResult,
+  topology?: TopologyResult,
 ) {
   const files: Record<string, NpyArray> = {};
   if ((view === "butterfly" || view === "wannier") && butterfly) {
@@ -205,11 +220,30 @@ export function exportNpz(
       ]),
     });
   } else if (view === "bands" && bands) {
+    const effectiveTopology =
+      topology?.baseSamples === bands.samples
+        && topology.bands === bands.bands
+        ? topology
+        : bands;
     Object.assign(files, {
       energy: bands.energy,
       berry_flux: bands.berry,
-      wilson_phase: bands.wilson,
-      chern: bands.chern,
+      wilson_phase: effectiveTopology.wilson,
+      chern: effectiveTopology.chern,
+      wilson_winding: effectiveTopology.wilsonWinding,
+      wilson_max_step: effectiveTopology.wilsonMaxStep,
+      topology_group_resolved: new Int32Array(
+        effectiveTopology.topologyGroupResolved,
+      ),
+      topology_resolved: new Int32Array([
+        effectiveTopology.topologyResolved ? 1 : 0,
+      ]),
+      topology_samples_x: new Int32Array([
+        effectiveTopology === bands ? bands.samples : topology!.samplesX,
+      ]),
+      topology_samples_y: new Int32Array([
+        effectiveTopology === bands ? bands.samples : topology!.samplesY,
+      ]),
       group_start: bands.groupStart,
       group_size: bands.groupSize,
       path_x: bands.pathX,
@@ -219,6 +253,12 @@ export function exportNpz(
       magnetic_brillouin_zone: bands.bz,
       ordinary_brillouin_zone: bands.ordinaryBz,
     });
+    if (effectiveTopology !== bands) {
+      Object.assign(files, {
+        render_grid_wilson_phase: bands.wilson,
+        render_grid_chern: bands.chern,
+      });
+    }
     if (
       geometry?.samples === bands.samples
       && geometry.bands === bands.bands

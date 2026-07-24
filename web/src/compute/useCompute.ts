@@ -12,12 +12,17 @@ import {
   bandComputationKey,
   latticeComputationKey,
   sweepComputationKey,
+  topologyComputationKey,
+  topologyRefinementGrid,
+  type TopologyRefinementGrid,
 } from "./computeKeys";
 
 export {
   bandComputationKey,
   latticeComputationKey,
   sweepComputationKey,
+  topologyComputationKey,
+  topologyRefinementGrid,
 } from "./computeKeys";
 
 const engine = new PyodideWorkerEngine();
@@ -42,6 +47,8 @@ interface DesiredComputations {
   bandsKey?: string;
   latticeKey?: string;
   geometryKey?: string;
+  topologyKey?: string;
+  topologyGrid?: TopologyRefinementGrid;
 }
 
 function desiredComputations(
@@ -50,6 +57,7 @@ function desiredComputations(
   view: ViewKind,
   workspaceWide: boolean,
   geometryRequested: boolean,
+  topologyRefinementKey?: string,
 ): DesiredComputations {
   const workspace = workspaceWide && focus === "workspace";
   const active = focus === "workspace" ? view : focus;
@@ -57,12 +65,22 @@ function desiredComputations(
     workspace || active === "butterfly" || active === "wannier";
   const needsBands = workspace || active === "bands";
   const needsLattice = workspace || active === "lattice";
+  const bandsKey = needsBands ? bandComputationKey(parameters) : undefined;
+  const topologyGrid = topologyRefinementGrid(parameters);
+  const topologyRequested =
+    bandsKey !== undefined && topologyRefinementKey === bandsKey;
   return {
     parameters,
     ...(needsSweep ? { sweepKey: sweepComputationKey(parameters) } : {}),
-    ...(needsBands ? { bandsKey: bandComputationKey(parameters) } : {}),
+    ...(bandsKey ? { bandsKey } : {}),
     ...(needsBands && geometryRequested
       ? { geometryKey: bandComputationKey(parameters) }
+      : {}),
+    ...(topologyRequested
+      ? {
+          topologyKey: topologyComputationKey(parameters, topologyGrid),
+          topologyGrid,
+        }
       : {}),
     ...(needsLattice
       ? { latticeKey: latticeComputationKey(parameters) }
@@ -74,7 +92,7 @@ class ComputeScheduler {
   private desired?: DesiredComputations;
   private running = false;
   private active?: {
-    kind: "butterfly" | "bands" | "lattice" | "geometry";
+    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology";
     key: string;
     requestId: string;
   };
@@ -84,6 +102,7 @@ class ComputeScheduler {
     if (next.latticeKey) resultCache.expectLattice(next.latticeKey);
     if (next.bandsKey) resultCache.expectBands(next.bandsKey);
     if (next.geometryKey) resultCache.expectGeometry(next.geometryKey);
+    if (next.topologyKey) resultCache.expectTopology(next.topologyKey);
     if (next.sweepKey) resultCache.expectButterfly(next.sweepKey);
 
     if (
@@ -117,6 +136,16 @@ class ComputeScheduler {
                 cached: () => resultCache.hasBands(target.bandsKey!),
               }
             : undefined,
+          target.topologyKey && target.topologyGrid && target.bandsKey
+            ? {
+                kind: "topology" as const,
+                key: target.topologyKey,
+                bandKey: target.bandsKey,
+                grid: target.topologyGrid,
+                cached: () =>
+                  resultCache.hasTopology(target.topologyKey!),
+              }
+            : undefined,
           target.geometryKey
             ? {
                 kind: "geometry" as const,
@@ -141,6 +170,13 @@ class ComputeScheduler {
             await this.computeLattice(job.key, target.parameters);
           } else if (job.kind === "bands") {
             await this.computeBands(job.key, target.parameters);
+          } else if (job.kind === "topology") {
+            await this.computeTopology(
+              job.key,
+              job.bandKey,
+              job.grid,
+              target.parameters,
+            );
           } else if (job.kind === "geometry") {
             await this.computeGeometry(job.key, target.parameters);
           } else {
@@ -155,7 +191,7 @@ class ComputeScheduler {
   }
 
   private setActive(
-    kind: "butterfly" | "bands" | "lattice" | "geometry",
+    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
     key: string,
     id: string,
   ) {
@@ -306,6 +342,65 @@ class ComputeScheduler {
     }
   }
 
+  private async computeTopology(
+    key: string,
+    bandKey: string,
+    grid: TopologyRefinementGrid,
+    parameters: ScientificParameters,
+  ) {
+    const snapshot = resultCache.getSnapshot();
+    const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
+    if (!bands) return;
+    const groups: [number, number][] = [];
+    for (let band = 0; band < bands.bands; band += 1) {
+      if (bands.groupStart[band] !== band) continue;
+      groups.push([band, bands.groupSize[band] ?? 1]);
+    }
+
+    const id = requestId("topology");
+    const store = useAppStore.getState();
+    resultCache.beginTopology(key);
+    store.incrementComputeCounter("topology");
+    this.setActive("topology", key, id);
+    store.setProgress({
+      phase: "computing",
+      fraction: 0.1,
+      message: `Refining topology on ${grid.samplesX} × ${grid.samplesY} momentum links`,
+    });
+    try {
+      const result = await engine.computeTopology(
+        id,
+        parameters,
+        groups,
+        grid.samplesX,
+        grid.samplesY,
+      );
+      resultCache.setTopology(result, key);
+      if (resultCache.isExpected("topology", key)) {
+        store.setProgress({
+          phase: "complete",
+          fraction: 1,
+          message: result.topologyResolved
+            ? `Topology converged in ${(result.elapsedMs / 1000).toFixed(2)} s`
+            : `Topology remains under-resolved after ${(result.elapsedMs / 1000).toFixed(2)} s`,
+        });
+      }
+    } catch (error: unknown) {
+      if (!String(error).includes("cancelled")) {
+        resultCache.fail("topology", key);
+        if (resultCache.isExpected("topology", key)) {
+          store.setProgress({
+            phase: "error",
+            fraction: 0,
+            message: computationError(error, "Topology refinement failed."),
+          });
+        }
+      }
+    } finally {
+      this.clearActive(id);
+    }
+  }
+
   private async computeGeometry(
     key: string,
     parameters: ScientificParameters,
@@ -348,7 +443,9 @@ class ComputeScheduler {
 
   async cancelActive() {
     this.desired = undefined;
+    const activeKind = this.active?.kind;
     if (this.active) await engine.cancel(this.active.requestId);
+    return activeKind;
   }
 }
 
@@ -363,6 +460,9 @@ export function useCompute() {
   const surfaceMetric = useAppStore((state) => state.surfaceMetric);
   const geometryColumnsExpanded = useAppStore(
     (state) => state.geometryColumnsExpanded,
+  );
+  const topologyRefinementKey = useAppStore(
+    (state) => state.topologyRefinementKey,
   );
   const geometryRequested =
     surfaceMetric === "gxx"
@@ -409,6 +509,7 @@ export function useCompute() {
           view,
           workspaceWide,
           geometryRequested,
+          topologyRefinementKey,
         ),
       );
     }, 140);
@@ -418,13 +519,17 @@ export function useCompute() {
     geometryRequested,
     parameters,
     runtimeReady,
+    topologyRefinementKey,
     view,
     workspaceWide,
   ]);
 }
 
 export async function cancelActiveComputation() {
-  await scheduler.cancelActive();
+  const activeKind = await scheduler.cancelActive();
+  if (activeKind === "topology") {
+    useAppStore.getState().requestTopologyRefinement(undefined);
+  }
   useAppStore.getState().setProgress({
     phase: "idle",
     fraction: 0,

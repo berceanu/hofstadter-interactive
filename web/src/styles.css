@@ -1035,10 +1035,60 @@ button {
   font: 10px "DM Mono", monospace;
 }
 
+.chern-badge.under-resolved {
+  border-color: rgba(255, 159, 67, 0.42);
+  color: #ffb36c;
+  background: rgba(255, 159, 67, 0.08);
+}
+
+.band-cut-panel .panel-heading {
+  height: auto;
+  min-height: 70px;
+}
+
 .band-cut-heading-tools {
   display: grid;
   justify-items: end;
   gap: 7px;
+}
+
+.topology-resolution-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topology-resolution-chip {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 159, 67, 0.38);
+  border-radius: 999px;
+  color: #ffb36c;
+  background: rgba(255, 159, 67, 0.08);
+  font: 8px "DM Mono", monospace;
+  white-space: nowrap;
+}
+
+.topology-resolution-chip.resolved {
+  border-color: rgba(92, 242, 206, 0.34);
+  color: var(--mint);
+  background: rgba(92, 242, 206, 0.07);
+}
+
+.topology-refine-button {
+  min-height: 24px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 209, 102, 0.38);
+  border-radius: 5px;
+  color: var(--gold);
+  background: rgba(255, 209, 102, 0.07);
+  font: 8px "DM Mono", monospace;
+  cursor: pointer;
+}
+
+.topology-refine-button:hover,
+.topology-refine-button:focus-visible {
+  border-color: var(--gold);
+  background: rgba(255, 209, 102, 0.13);
 }
 
 .band-cut-heading-row {
@@ -1238,6 +1288,14 @@ button {
 
 .wilson-winding {
   fill: var(--gold);
+}
+
+.wilson-winding.under-resolved {
+  fill: #ffb36c;
+}
+
+.topology-under-resolved-value {
+  color: #ffb36c;
 }
 
 .property-table-panel {
@@ -1610,6 +1668,11 @@ button {
 .bands-layout.compact .panel-heading {
   height: 58px;
   padding: 12px;
+}
+
+.bands-layout.compact .band-cut-panel .panel-heading {
+  height: auto;
+  min-height: 72px;
 }
 
 .bands-layout.compact .panel-heading h2 {

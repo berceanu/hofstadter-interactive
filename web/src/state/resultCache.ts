@@ -5,6 +5,7 @@ import type {
   ButterflyResult,
   GeometryResult,
   LatticeResult,
+  TopologyResult,
 } from "../compute/contracts";
 
 interface CacheSnapshot {
@@ -21,6 +22,9 @@ interface CacheSnapshot {
   geometry?: GeometryResult;
   geometryKey?: string;
   geometryStale: boolean;
+  topology?: TopologyResult;
+  topologyKey?: string;
+  topologyStale: boolean;
 }
 
 export class ResultCache {
@@ -30,15 +34,18 @@ export class ResultCache {
     bandsStale: false,
     latticeStale: false,
     geometryStale: false,
+    topologyStale: false,
   };
   private expectedButterflyKey?: string;
   private expectedBandsKey?: string;
   private expectedLatticeKey?: string;
   private expectedGeometryKey?: string;
+  private expectedTopologyKey?: string;
   private readonly butterflyResults = new Map<string, ButterflyResult>();
   private readonly bandResults = new Map<string, BandResult>();
   private readonly latticeResults = new Map<string, LatticeResult>();
   private readonly geometryResults = new Map<string, GeometryResult>();
+  private readonly topologyResults = new Map<string, TopologyResult>();
   private readonly butterflyWorking = new Map<
     string,
     { key: string; result: ButterflyResult }
@@ -111,6 +118,16 @@ export class ResultCache {
     return Boolean(cached);
   }
 
+  expectTopology(key: string) {
+    this.expectedTopologyKey = key;
+    const cached = this.topologyResults.get(key);
+    this.publish({
+      ...(cached ? { topology: cached, topologyKey: key } : {}),
+      topologyStale: !cached && Boolean(this.snapshot.topology),
+    });
+    return Boolean(cached);
+  }
+
   hasButterfly(key: string) {
     return this.butterflyResults.has(key);
   }
@@ -127,14 +144,19 @@ export class ResultCache {
     return this.geometryResults.has(key);
   }
 
+  hasTopology(key: string) {
+    return this.topologyResults.has(key);
+  }
+
   isExpected(
-    kind: "butterfly" | "bands" | "lattice" | "geometry",
+    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
     key: string,
   ) {
     if (kind === "butterfly") return this.expectedButterflyKey === key;
     if (kind === "bands") return this.expectedBandsKey === key;
     if (kind === "lattice") return this.expectedLatticeKey === key;
-    return this.expectedGeometryKey === key;
+    if (kind === "geometry") return this.expectedGeometryKey === key;
+    return this.expectedTopologyKey === key;
   }
 
   beginButterfly(requestId: string, key = requestId) {
@@ -232,8 +254,22 @@ export class ResultCache {
     });
   }
 
+  beginTopology(key: string) {
+    this.expectedTopologyKey ??= key;
+  }
+
+  setTopology(result: TopologyResult, key = result.requestId) {
+    this.remember(this.topologyResults, key, result);
+    if (this.expectedTopologyKey !== key) return;
+    this.publish({
+      topology: result,
+      topologyKey: key,
+      topologyStale: false,
+    });
+  }
+
   fail(
-    kind: "butterfly" | "bands" | "lattice" | "geometry",
+    kind: "butterfly" | "bands" | "lattice" | "geometry" | "topology",
     key: string,
   ) {
     if (!this.isExpected(kind, key)) return;
@@ -243,8 +279,10 @@ export class ResultCache {
       this.publish({ bandsStale: Boolean(this.snapshot.bands) });
     } else if (kind === "lattice") {
       this.publish({ latticeStale: Boolean(this.snapshot.lattice) });
-    } else {
+    } else if (kind === "geometry") {
       this.publish({ geometryStale: Boolean(this.snapshot.geometry) });
+    } else {
+      this.publish({ topologyStale: Boolean(this.snapshot.topology) });
     }
   }
 }

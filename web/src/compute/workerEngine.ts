@@ -7,6 +7,7 @@ import type {
   LatticeResult,
   RuntimeProgress,
   ScientificParameters,
+  TopologyResult,
 } from "./contracts";
 import type { WorkerApi } from "./compute.worker";
 
@@ -156,6 +157,38 @@ export class PyodideWorkerEngine implements ComputeEngine {
     try {
       const result = await this.withRecovery(() =>
         this.remote.computeBands(requestId, parameters),
+      );
+      if (this.cancelled.has(requestId)) throw new Error("cancelled");
+      return result;
+    } finally {
+      this.cancelled.delete(requestId);
+      try {
+        await this.remote.clearCancellation(requestId);
+      } catch {
+        // A failed worker will be recreated by the next computation.
+      }
+    }
+  }
+
+  async computeTopology(
+    requestId: string,
+    parameters: ScientificParameters,
+    groups: [number, number][],
+    samplesX: number,
+    samplesY: number,
+  ): Promise<TopologyResult> {
+    await this.ensureReady();
+    this.cancelled.delete(requestId);
+    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    try {
+      const result = await this.withRecovery(() =>
+        this.remote.computeTopology(
+          requestId,
+          parameters,
+          groups,
+          samplesX,
+          samplesY,
+        ),
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;

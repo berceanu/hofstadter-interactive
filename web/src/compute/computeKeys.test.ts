@@ -4,6 +4,8 @@ import {
   bandComputationKey,
   latticeComputationKey,
   sweepComputationKey,
+  topologyComputationKey,
+  topologyRefinementGrid,
 } from "./computeKeys";
 
 describe("panel-specific computation keys", () => {
@@ -46,5 +48,34 @@ describe("panel-specific computation keys", () => {
     expect(latticeComputationKey(second)).not.toBe(
       latticeComputationKey(first),
     );
+  });
+
+  it("chooses a memory-bounded anisotropic topology grid for q=31", () => {
+    const parameters = {
+      ...defaultParameters,
+      p: 1,
+      q: 31,
+      samples: 31,
+    };
+    expect(topologyRefinementGrid(parameters)).toEqual({
+      samplesX: 81,
+      samplesY: 121,
+      capped: false,
+    });
+    expect(topologyComputationKey(parameters)).toContain("topology:81x121");
+  });
+
+  it("honestly caps impractical large-q refinement grids", () => {
+    expect(
+      topologyRefinementGrid({
+        ...defaultParameters,
+        q: 199,
+        samples: 31,
+      }),
+    ).toEqual({
+      samplesX: 161,
+      samplesY: 241,
+      capped: true,
+    });
   });
 });
