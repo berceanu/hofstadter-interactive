@@ -60,12 +60,19 @@ export class PyodideWorkerEngine implements ComputeEngine {
       proxy(this.progressCallback),
     );
     return this.ready.catch((error: unknown) => {
+      // Recreate the worker so the next attempt starts from a clean module
+      // (a half-initialized Pyodide cannot be loaded twice in one worker).
       this.ready = undefined;
+      this.worker.terminate();
+      this.createWorker();
       throw error;
     });
   }
 
   private isRecoverable(error: unknown) {
+    // Python exceptions travel over a healthy transport; restarting the
+    // worker for them doubles the compute and drops the Python-side caches.
+    if (error instanceof Error && error.name === "PythonError") return false;
     const message = String(error).toLowerCase();
     return [
       "python runtime is not initialized",

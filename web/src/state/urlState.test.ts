@@ -67,6 +67,23 @@ describe("URL scientific state", () => {
     });
   });
 
+  it("ignores empty hopping entries instead of inventing zero shells", () => {
+    expect(parseUrlState("?t=")).toMatchObject({
+      hoppings: defaultParameters.hoppings,
+    });
+    expect(parseUrlState("?t=,,")).toMatchObject({
+      hoppings: defaultParameters.hoppings,
+    });
+    expect(parseUrlState("?t=1,")).toMatchObject({ hoppings: [1] });
+    expect(parseUrlState("?t=1,,0.5")).toMatchObject({ hoppings: [1, 0.5] });
+  });
+
+  it("round-trips the workspace's active view", () => {
+    writeUrlState(defaultParameters, "workspace", "wannier");
+    const parsed = parseUrlState(window.location.search);
+    expect(parsed).toMatchObject({ focus: "workspace", view: "wannier" });
+  });
+
   it("round-trips a custom basis in the shared URL", () => {
     writeUrlState(
       {

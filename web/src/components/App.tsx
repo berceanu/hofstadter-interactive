@@ -33,10 +33,10 @@ import {
 } from "../utils/exports";
 import { restoreNpzFile } from "../utils/npzImport";
 import {
+  activeTopologyComputationKey,
   baseTopologyGridSufficient,
   dispersionComputationKey,
   dispersionRefinementGrid,
-  topologyComputationKey,
   topologyRefinementPlan,
 } from "../compute/computeKeys";
 
@@ -87,6 +87,29 @@ function RuntimeStatus() {
   );
 }
 
+// Imported archives can hold fluxes whose denominator differs from the live
+// q, so the displayed fraction must come from the state's own flux value.
+function fluxFraction(flux: number, preferredDenominator: number) {
+  const preferred = Math.round(flux * preferredDenominator);
+  if (Math.abs(flux - preferred / preferredDenominator) < 1e-9) {
+    return { numerator: preferred, denominator: preferredDenominator };
+  }
+  let bestNumerator = Math.round(flux);
+  let bestDenominator = 1;
+  let bestError = Math.abs(flux - bestNumerator);
+  for (let denominator = 2; denominator <= 199; denominator += 1) {
+    const numerator = Math.round(flux * denominator);
+    const error = Math.abs(flux - numerator / denominator);
+    if (error < bestError - 1e-15) {
+      bestNumerator = numerator;
+      bestDenominator = denominator;
+      bestError = error;
+      if (error < 1e-12) break;
+    }
+  }
+  return { numerator: bestNumerator, denominator: bestDenominator };
+}
+
 function SelectionReadout() {
   const point = useAppStore((state) => state.selectedPoint);
   const view = useAppStore((state) => state.view);
@@ -109,7 +132,7 @@ function SelectionReadout() {
     || (!point.source && view === "wannier");
   const isGap = point.source === "gap"
     || (!point.source && colorMode === "gaps" && point.gap !== undefined);
-  const numerator = Math.round(point.flux * parameters.q);
+  const fraction = fluxFraction(point.flux, parameters.q);
   return (
     <div className="selection-card">
       <div>
@@ -117,7 +140,7 @@ function SelectionReadout() {
           <span className="eyebrow">SELECTED STATE</span>
           <HelpTooltip copy={bandResultHelp.inspector} />
         </div>
-        <strong>φ = {numerator}/{parameters.q}</strong>
+        <strong>φ = {fraction.numerator}/{fraction.denominator}</strong>
       </div>
       <dl>
         {isWannier ? (
@@ -225,7 +248,7 @@ function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
 }
 
 function BandTools() {
-  const { bands, topology, topologyKey } = useResultCache();
+  const { bands, bandsKey, topology, topologyKey } = useResultCache();
   const parameters = useAppStore((state) => state.parameters);
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
@@ -233,9 +256,11 @@ function BandTools() {
   const setSurfaceMetric = useAppStore((state) => state.setSurfaceMetric);
   if (!bands) return null;
   const topologyPlan = topologyRefinementPlan(parameters);
-  const expectedTopologyKey = topologyComputationKey(
+  const expectedTopologyKey = activeTopologyComputationKey(
     parameters,
     selectedBand,
+    bands,
+    bandsKey,
     topologyPlan,
   );
   const refinedTopology =
@@ -325,6 +350,43 @@ function BandTools() {
   );
 }
 
+// Exports read arrays from the cache but label them with the live
+// parameters, so they must pause while the visible result is a stale
+// placeholder for a recomputation still in flight.
+function exportsPending(
+  view: ViewKind,
+  cache: {
+    butterfly?: { complete: boolean };
+    butterflyStale: boolean;
+    bands?: unknown;
+    bandsStale: boolean;
+    lattice?: unknown;
+    latticeStale: boolean;
+  },
+) {
+  if (view === "butterfly" || view === "wannier") {
+    return cache.butterflyStale || !cache.butterfly?.complete;
+  }
+  if (view === "bands") return cache.bandsStale || !cache.bands;
+  return cache.latticeStale || !cache.lattice;
+}
+
+const EXPORT_PENDING_HINT =
+  "Recomputing — exports resume when the view matches the current parameters";
+
+function reportExportError(error: unknown) {
+  useAppStore.getState().setProgress({
+    phase: "error",
+    fraction: 0,
+    message:
+      error instanceof Error ? error.message : "Export failed unexpectedly.",
+  });
+}
+
+function exportArtPngSafely(...args: Parameters<typeof exportArtPng>) {
+  exportArtPng(...args).catch(reportExportError);
+}
+
 function viewTitle(view: ViewKind) {
   if (view === "butterfly") return "Hofstadter butterfly";
   if (view === "wannier") return "Wannier diagram";
@@ -365,9 +427,11 @@ function WorkspacePanel({
   const cache = useResultCache();
   const currentTopology =
     cache.topologyKey
-        === topologyComputationKey(
+        === activeTopologyComputationKey(
           parameters,
           selectedBand,
+          cache.bands,
+          cache.bandsKey,
           topologyRefinementPlan(parameters),
         )
       ? cache.topology
@@ -381,6 +445,7 @@ function WorkspacePanel({
       ? cache.dispersion
       : undefined;
   const [transparentArt, setTransparentArt] = useState(false);
+  const exportsDisabled = exportsPending(id, cache);
 
   return (
     <section
@@ -412,6 +477,8 @@ function WorkspacePanel({
       <div className="panel-export-tools" aria-label={`${title} exports`}>
         <button
           aria-label={`Export ${title} CSV`}
+          disabled={exportsDisabled}
+          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
           onClick={() =>
             exportCsv(
               parameters,
@@ -429,6 +496,8 @@ function WorkspacePanel({
         </button>
         <button
           aria-label={`Export ${title} NPZ`}
+          disabled={exportsDisabled}
+          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
           onClick={() =>
             exportNpz(
               parameters,
@@ -446,8 +515,10 @@ function WorkspacePanel({
         </button>
         <button
           aria-label={`Export ${title} PNG`}
+          disabled={exportsDisabled}
+          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
           onClick={() => {
-            if (root.current) void exportPng(root.current, parameters, id);
+            if (root.current) exportPng(root.current, parameters, id).catch(reportExportError);
           }}
         >
           PNG
@@ -456,12 +527,14 @@ function WorkspacePanel({
           <>
             <button
               aria-label={`Export ${title} Art PNG`}
+              disabled={exportsDisabled}
+              title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
               onClick={() => {
                 const stage = root.current?.querySelector<HTMLElement>(
                   ".plot-stage",
                 );
                 if (stage) {
-                  void exportArtPng(
+                  exportArtPngSafely(
                     stage,
                     parameters,
                     id,
@@ -507,7 +580,7 @@ function WorkspaceDashboard() {
           <button
             onClick={() => {
               if (root.current) {
-                void exportPng(root.current, parameters, "workspace");
+                exportPng(root.current, parameters, "workspace").catch(reportExportError);
               }
             }}
           >
@@ -583,9 +656,11 @@ function FocusedView({ view }: { view: ViewKind }) {
   const cache = useResultCache();
   const currentTopology =
     cache.topologyKey
-        === topologyComputationKey(
+        === activeTopologyComputationKey(
           parameters,
           selectedBand,
+          cache.bands,
+          cache.bandsKey,
           topologyRefinementPlan(parameters),
         )
       ? cache.topology
@@ -605,6 +680,7 @@ function FocusedView({ view }: { view: ViewKind }) {
     [cache.butterfly],
   );
   const help = resultHelp[view];
+  const exportsDisabled = exportsPending(view, cache);
 
   return (
     <main className="workspace focused-workspace">
@@ -647,6 +723,8 @@ function FocusedView({ view }: { view: ViewKind }) {
             <span className="eyebrow">EXPORT / SHARE</span>
             <div>
               <button
+                disabled={exportsDisabled}
+                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
                 onClick={() =>
                   exportCsv(
                     parameters,
@@ -663,6 +741,8 @@ function FocusedView({ view }: { view: ViewKind }) {
                 CSV
               </button>
               <button
+                disabled={exportsDisabled}
+                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
                 onClick={() =>
                   exportNpz(
                     parameters,
@@ -679,9 +759,11 @@ function FocusedView({ view }: { view: ViewKind }) {
                 NPZ
               </button>
               <button
+                disabled={exportsDisabled}
+                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
                 onClick={() => {
                   if (exportRoot.current) {
-                    void exportPng(exportRoot.current, parameters, view);
+                    exportPng(exportRoot.current, parameters, view).catch(reportExportError);
                   }
                 }}
               >
@@ -690,13 +772,15 @@ function FocusedView({ view }: { view: ViewKind }) {
               {(view === "butterfly" || view === "wannier") && (
                 <>
                   <button
+                    disabled={exportsDisabled}
+                    title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
                     onClick={() => {
                       const stage =
                         exportRoot.current?.querySelector<HTMLElement>(
                           ".plot-stage",
                         );
                       if (stage) {
-                        void exportArtPng(
+                        exportArtPngSafely(
                           stage,
                           parameters,
                           view,

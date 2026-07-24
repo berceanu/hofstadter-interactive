@@ -200,17 +200,53 @@ export function topologyRefinementGrid(
   };
 }
 
-export function topologyComputationKey(
+export interface TopologyBandGroups {
+  bands: number;
+  groupStart: Int32Array;
+  groupSize: Int32Array;
+}
+
+export function topologyTargetLabel(
+  bands: TopologyBandGroups | undefined,
+  selectedBand: number,
+) {
+  const clamped = Math.max(0, selectedBand);
+  if (!bands) return `band-${clamped}`;
+  const band = Math.min(bands.bands - 1, clamped);
+  const start = bands.groupStart[band] ?? band;
+  const size = bands.groupSize[start] ?? 1;
+  return `group-${start}-${size}`;
+}
+
+export function activeTopologyComputationKey(
   parameters: ScientificParameters,
-  selectedBand = 0,
+  selectedBand: number,
+  bands: TopologyBandGroups | undefined,
+  bandsKey: string | undefined,
   plan = topologyRefinementPlan(parameters),
 ) {
+  const known =
+    bands && bandsKey === bandComputationKey(parameters) ? bands : undefined;
+  return topologyComputationKey(
+    parameters,
+    topologyTargetLabel(known, selectedBand),
+    plan,
+  );
+}
+
+export function topologyComputationKey(
+  parameters: ScientificParameters,
+  target: number | string = 0,
+  plan = topologyRefinementPlan(parameters),
+) {
+  const label =
+    typeof target === "number" ? `band-${Math.max(0, target)}` : target;
   const levels = plan.levels.length
     ? plan.levels
         .map((grid) => `${grid.samplesX}x${grid.samplesY}`)
         .join(">")
     : "unavailable";
-  return `${bandComputationKey(parameters)}|topology:auto:band-${selectedBand}:${levels}`;
+  return `${bandComputationKey(parameters)}|topology:auto:${label}:${levels}`;
 }
 
 export function dispersionRefinementGrid(

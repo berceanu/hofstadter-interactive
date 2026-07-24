@@ -287,6 +287,48 @@ export function exportCsv(
         ].join(","),
       );
     }
+    rows.push("");
+    rows.push("link,x1,y1,x2,y2");
+    for (let index = 0; index < lattice.links.length / 4; index += 1) {
+      rows.push(
+        [
+          index,
+          lattice.links[index * 4],
+          lattice.links[index * 4 + 1],
+          lattice.links[index * 4 + 2],
+          lattice.links[index * 4 + 3],
+        ].join(","),
+      );
+    }
+    rows.push("");
+    rows.push("unit_cell_vertex,x,y");
+    for (let index = 0; index < lattice.unitCell.length / 2; index += 1) {
+      rows.push(
+        [
+          index,
+          lattice.unitCell[index * 2],
+          lattice.unitCell[index * 2 + 1],
+        ].join(","),
+      );
+    }
+    rows.push("");
+    rows.push("magnetic_bz_vertex,kx,ky");
+    for (let index = 0; index < lattice.bz.length / 2; index += 1) {
+      rows.push(
+        [index, lattice.bz[index * 2], lattice.bz[index * 2 + 1]].join(","),
+      );
+    }
+    rows.push("");
+    rows.push("ordinary_bz_vertex,kx,ky");
+    for (let index = 0; index < lattice.ordinaryBz.length / 2; index += 1) {
+      rows.push(
+        [
+          index,
+          lattice.ordinaryBz[index * 2],
+          lattice.ordinaryBz[index * 2 + 1],
+        ].join(","),
+      );
+    }
   } else {
     return;
   }
@@ -434,10 +476,63 @@ export function exportNpz(
   );
 }
 
-function imageFromSvg(svg: SVGSVGElement) {
+// An SVG rasterized through <img> is an isolated document: the app's
+// stylesheet and CSS custom properties do not apply, so every visual
+// property must be inlined from the live computed styles first.
+const SVG_EXPORT_STYLE_PROPERTIES = [
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-width",
+  "stroke-opacity",
+  "stroke-dasharray",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "opacity",
+  "visibility",
+  "font-family",
+  "font-size",
+  "font-weight",
+  "letter-spacing",
+  "text-anchor",
+  "dominant-baseline",
+  "paint-order",
+];
+
+function inlineComputedStyles(source: Element, target: Element) {
+  if (target instanceof SVGElement) {
+    const computed = window.getComputedStyle(source);
+    for (const property of SVG_EXPORT_STYLE_PROPERTIES) {
+      target.style.setProperty(
+        property,
+        computed.getPropertyValue(property),
+      );
+    }
+  }
+  for (let index = 0; index < source.children.length; index += 1) {
+    const targetChild = target.children[index];
+    if (targetChild) {
+      inlineComputedStyles(source.children[index], targetChild);
+    }
+  }
+}
+
+function imageFromSvg(svg: SVGSVGElement, scale = 1) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const clone = svg.cloneNode(true) as SVGSVGElement;
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    inlineComputedStyles(svg, clone);
+    const rect = svg.getBoundingClientRect();
+    // Explicit intrinsic dimensions at the output scale keep the raster
+    // sharp; without them the isolated document falls back to ~300px.
+    clone.setAttribute(
+      "width",
+      String(Math.max(1, Math.round(rect.width * scale))),
+    );
+    clone.setAttribute(
+      "height",
+      String(Math.max(1, Math.round(rect.height * scale))),
+    );
     const blob = new Blob([new XMLSerializer().serializeToString(clone)], {
       type: "image/svg+xml",
     });
@@ -493,7 +588,7 @@ export async function exportPng(
   for (const svg of root.querySelectorAll<SVGSVGElement>("svg[data-export-layer]")) {
     if (options.art) continue;
     const child = svg.getBoundingClientRect();
-    const image = await imageFromSvg(svg);
+    const image = await imageFromSvg(svg, scale);
     context.drawImage(
       image,
       child.left - rect.left,
@@ -502,14 +597,13 @@ export async function exportPng(
       child.height,
     );
   }
-  output.toBlob((blob) => {
-    if (blob) {
-      download(
-        blob,
-        options.filename ?? exportFilename(parameters, view, "png"),
-      );
-    }
-  }, "image/png");
+  const blob = await new Promise<Blob | null>((resolve) =>
+    output.toBlob(resolve, "image/png"),
+  );
+  if (!blob) {
+    throw new Error("PNG encoding failed — try a smaller export scale.");
+  }
+  download(blob, options.filename ?? exportFilename(parameters, view, "png"));
 }
 
 export function exportArtPng(

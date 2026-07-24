@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Adversarial audit remediation
+
+Scientific correctness:
+
+- Fix the cumulative Hall labels (`tᵣ`) shown on Wannier gaps for every even
+  flux denominator: labels now come from the Diophantine `t_r` table instead
+  of a cumulative sum of the per-band coloring, which double-counted the
+  duplicated central entry and mislabeled every gap above the central band
+  touching (for example square `q = 6` reported −6 and −5 where the open
+  gaps carry −2 and −1). The ambiguous, physically closed central gap at
+  `r = q/2` is omitted rather than mislabeled. Even-q regression tests were
+  added; previous coverage used odd q only.
+- Restrict fast Diophantine butterfly coloring to the nearest-neighbour
+  square model. Probes against the app's own Wilson-certified Fukui
+  invariants show the square-window coloring is wrong for triangular and
+  general Bravais models and for honeycomb doubling at even q (and extra
+  hopping shells break it even on square), so those models now report
+  butterfly topology as unavailable instead of displaying labels that
+  contradict the certified band topology.
+- Reject non-coprime flux fractions at the Python adapter boundary, matching
+  the upstream CLI, instead of silently returning a folded spectrum.
+- Close the high-symmetry band cut: the path now includes the final Γ sample
+  so curves reach the closing tick and the last point is selectable.
+
+Data integrity:
+
+- NPZ import validates instead of fabricating: per-state and per-gap arrays
+  with mismatched lengths are rejected (previously zero-padded into
+  physical-looking `C = 0` states), the declared flux denominator must match
+  the flux data, a renamed file's `q` hint is cross-checked against the data,
+  decompressed archives are capped at 64 MB, numpy's native `<i8`/`|b1` and
+  other small integer dtypes import correctly, invalid shape headers and
+  duplicate array names are rejected, and truncated version-2 headers report
+  a clear error.
+- Exported NPZ metadata now travels as a `metadata` uint8 array so
+  `np.load` users can iterate every key; legacy `metadata.json` archives
+  still import.
+- Export buttons pause while a view shows stale data for parameters still
+  being recomputed, so archives can no longer pair old arrays with new
+  parameter metadata and poison the cache on re-import.
+- PNG export inlines the computed SVG styles and rasterizes at the output
+  scale: axes, tick labels, flux markers, and Brillouin-zone outlines no
+  longer vanish from exported images. A failed PNG encode reports an error
+  instead of silently downloading nothing. Lattice CSV now includes links,
+  the unit cell, and both Brillouin-zone outlines.
+- The state inspector derives each point's flux fraction from the point
+  itself, so imported archives with foreign denominators display correctly.
+
+Interface and pipeline:
+
+- Cancel now cancels: the scheduler stops the remaining queued jobs instead
+  of launching the flux sweep after the cancelled computation returns.
+- Cancelled or failed butterfly sweeps release their accumulated chunks
+  (previously pinned for the whole session).
+- Out-of-range band selections are clamped when band results are served
+  from cache, fixing the vanishing momentum marker and the false
+  "not certified" topology status.
+- Topology refinements are cached by resolved band group, so selecting a
+  sibling band in the same group or re-entering a parameter set no longer
+  reruns an identical multi-second refinement.
+- The 3D band surface no longer rebuilds its full geometry on every pointer
+  event; result caches evict least-recently-used entries; a background
+  dispersion refinement no longer resets a just-selected Wilson marker;
+  a failed runtime initialization is retryable instead of cached forever;
+  Python exceptions no longer trigger spurious worker restarts.
+- Shared URLs round-trip the workspace's active view, and empty hopping
+  entries (`?t=` or trailing commas) no longer inject phantom zero-amplitude
+  shells.
+
+Trust and delivery:
+
+- The shipped audit report computes its verdict, accessibility pills, and
+  summary metrics from the recorded audit inputs instead of hardcoding a
+  passing result, and the contrast audit fails when its audited colors no
+  longer appear in the stylesheet.
+- CI now also boots the built production bundle at the deployed base path
+  (`npm run test:e2e:dist`) so a base-path or asset regression cannot ship
+  green, and `prepare:static` verifies the wheel filename referenced by the
+  runtime matches the version in `pyproject.toml`.
+- `tests/golden/web_advanced_parity.json` gained the previously missing
+  generator (`scripts/generate_advanced_golden.py`); goldens were
+  regenerated (values unchanged at 1e-12 aside from the corrected Chern
+  labels above). Stale `HT.plot*` entry points were removed from the wheel.
+- The deliberate Wannier IDOS convention (`r/M` per gap `r`, Diophantine-
+  consistent) is now documented in `NOTICE` as a departure from the upstream
+  CLI's `(r-1)/M`.
+
 ### Development workflow
 
 - Split validation into a seconds-scale `check:fast`, a small Chromium

@@ -19,6 +19,7 @@ import {
   topologyComputationKey,
   topologyRefinementGrid,
   topologyRefinementPlan,
+  topologyTargetLabel,
   type DispersionRefinementGrid,
   type TopologyRefinementPlan,
 } from "./computeKeys";
@@ -80,6 +81,12 @@ function desiredComputations(
   const needsBands = workspace || active === "bands";
   const needsLattice = workspace || active === "lattice";
   const bandsKey = needsBands ? bandComputationKey(parameters) : undefined;
+  const snapshot = resultCache.getSnapshot();
+  const knownBands =
+    bandsKey && snapshot.bandsKey === bandsKey ? snapshot.bands : undefined;
+  const clampedBand = knownBands
+    ? Math.max(0, Math.min(knownBands.bands - 1, selectedBand))
+    : Math.max(0, selectedBand);
   const topologyPlan = topologyRefinementPlan(parameters);
   const dispersionGrid = dispersionRefinementGrid(
     parameters,
@@ -100,11 +107,11 @@ function desiredComputations(
       ? {
           topologyKey: topologyComputationKey(
             parameters,
-            selectedBand,
+            topologyTargetLabel(knownBands, clampedBand),
             topologyPlan,
           ),
           topologyPlan,
-          selectedBand,
+          selectedBand: clampedBand,
         }
       : {}),
     ...(bandsKey && dispersionCanRefine
@@ -125,6 +132,7 @@ function desiredComputations(
 class ComputeScheduler {
   private desired?: DesiredComputations;
   private running = false;
+  private cancelRequested = false;
   private active?: {
     kind:
       | "butterfly"
@@ -139,6 +147,7 @@ class ComputeScheduler {
 
   schedule(next: DesiredComputations) {
     this.desired = next;
+    this.cancelRequested = false;
     if (next.latticeKey) resultCache.expectLattice(next.latticeKey);
     if (next.bandsKey) resultCache.expectBands(next.bandsKey);
     if (next.geometryKey) resultCache.expectGeometry(next.geometryKey);
@@ -147,6 +156,20 @@ class ComputeScheduler {
       resultCache.expectDispersion(next.dispersionKey);
     }
     if (next.sweepKey) resultCache.expectButterfly(next.sweepKey);
+
+    const snapshot = resultCache.getSnapshot();
+    if (
+      next.bandsKey
+      && snapshot.bandsKey === next.bandsKey
+      && snapshot.bands
+    ) {
+      const store = useAppStore.getState();
+      const clamped = Math.max(
+        0,
+        Math.min(snapshot.bands.bands - 1, store.selectedBand),
+      );
+      if (clamped !== store.selectedBand) store.setSelectedBand(clamped);
+    }
 
     if (
       this.active?.kind === "butterfly"
@@ -221,15 +244,28 @@ class ComputeScheduler {
         ].filter((job) => job !== undefined);
 
         for (const job of jobs) {
-          if (this.desired) break;
+          if (this.desired || this.cancelRequested) break;
           if (job.cached()) continue;
           if (job.kind === "lattice") {
             await this.computeLattice(job.key, target.parameters);
           } else if (job.kind === "bands") {
             await this.computeBands(job.key, target.parameters);
           } else if (job.kind === "topology") {
+            // A bands result computed earlier in this pass can refine the
+            // provisional band-indexed key into its group-canonical form.
+            const snapshot = resultCache.getSnapshot();
+            const bands =
+              snapshot.bandsKey === job.bandKey ? snapshot.bands : undefined;
+            const resolvedKey = topologyComputationKey(
+              target.parameters,
+              topologyTargetLabel(bands, job.selectedBand),
+              job.plan,
+            );
+            if (resolvedKey !== job.key && resultCache.expectTopology(resolvedKey)) {
+              continue;
+            }
             await this.computeTopology(
-              job.key,
+              resolvedKey,
               job.bandKey,
               job.plan,
               job.selectedBand,
@@ -409,6 +445,7 @@ class ComputeScheduler {
         }
       }
     } finally {
+      resultCache.abandonButterfly(id);
       this.clearActive(id);
     }
   }
@@ -422,7 +459,10 @@ class ComputeScheduler {
   ) {
     const snapshot = resultCache.getSnapshot();
     const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
-    if (!bands) return;
+    if (!bands) {
+      resultCache.clearTopologyExpectation(key);
+      return;
+    }
     const safeBand = Math.max(0, Math.min(bands.bands - 1, selectedBand));
     const groupStart = bands.groupStart[safeBand] ?? safeBand;
     const groupSize = bands.groupSize[groupStart] ?? 1;
@@ -523,7 +563,10 @@ class ComputeScheduler {
   ) {
     const snapshot = resultCache.getSnapshot();
     const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
-    if (!bands) return;
+    if (!bands) {
+      resultCache.clearDispersionExpectation(key);
+      return;
+    }
 
     const id = requestId("dispersion");
     const store = useAppStore.getState();
@@ -609,6 +652,7 @@ class ComputeScheduler {
 
   async cancelActive() {
     this.desired = undefined;
+    this.cancelRequested = true;
     const activeKind = this.active?.kind;
     if (this.active) await engine.cancel(this.active.requestId);
     return activeKind;
@@ -661,8 +705,8 @@ export function useCompute() {
   }, []);
 
   useEffect(() => {
-    writeUrlState(parameters, focus);
-  }, [focus, parameters]);
+    writeUrlState(parameters, focus, view);
+  }, [focus, parameters, view]);
 
   useEffect(() => {
     if (!runtimeReady) return;

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -12,6 +12,25 @@ const checks = [
   ["mint accent", "#5cf2ce", "#07101b"],
   ["gold data accent", "#ffd166", "#07101b"],
 ];
+
+// Anchor the audited pairs to the live stylesheet: a palette edit that
+// removes one of these colors must fail the audit instead of silently
+// checking values the app no longer uses.
+const stylesheet = (
+  await readFile(join(root, "web", "src", "styles.css"), "utf8")
+).toLowerCase();
+const missing = [
+  ...new Set(checks.flatMap(([, foreground, background]) => [
+    foreground,
+    background,
+  ])),
+].filter((color) => !stylesheet.includes(color.toLowerCase()));
+if (missing.length) {
+  console.error(
+    `Audited colors no longer appear in web/src/styles.css: ${missing.join(", ")}. Update scripts/accessibility-audit.mjs to match the current palette.`,
+  );
+  process.exitCode = 1;
+}
 
 function luminance(hex) {
   const channels = [1, 3, 5]
@@ -39,7 +58,10 @@ const results = checks.map(([name, foreground, background]) => ({
   pass: contrast(foreground, background) >= 4.5,
 }));
 const output = {
-  status: results.every((result) => result.pass) ? "pass" : "fail",
+  status:
+    results.every((result) => result.pass) && !missing.length
+      ? "pass"
+      : "fail",
   standard: "WCAG 2.2 AA normal text contrast",
   results,
 };

@@ -9,6 +9,7 @@ import {
   topologyComputationKey,
   topologyRefinementGrid,
   topologyRefinementPlan,
+  topologyTargetLabel,
 } from "./computeKeys";
 
 describe("panel-specific computation keys", () => {
@@ -122,6 +123,23 @@ describe("panel-specific computation keys", () => {
       requestedPathSamplesPerSegment: 796,
       capped: true,
     });
+  });
+
+  it("keys topology by the resolved band group, not the raw selection", () => {
+    const bands = {
+      bands: 5,
+      groupStart: new Int32Array([0, 1, 1, 3, 4]),
+      groupSize: new Int32Array([1, 2, 1, 1, 1]),
+    };
+    // Sibling bands inside one group share a label; out-of-range clamps.
+    expect(topologyTargetLabel(bands, 1)).toBe("group-1-2");
+    expect(topologyTargetLabel(bands, 2)).toBe("group-1-2");
+    expect(topologyTargetLabel(bands, 20)).toBe("group-4-1");
+    expect(topologyTargetLabel(undefined, 3)).toBe("band-3");
+    const parameters = { ...defaultParameters, q: 31, samples: 17 };
+    expect(
+      topologyComputationKey(parameters, topologyTargetLabel(bands, 2)),
+    ).toContain("topology:auto:group-1-2:");
   });
 
   it("raises only path detail when the linked cut is deeply zoomed", () => {

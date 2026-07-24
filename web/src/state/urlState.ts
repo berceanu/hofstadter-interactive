@@ -66,6 +66,8 @@ export function parseUrlState(search = window.location.search) {
     : defaultParameters.lattice;
   const hoppings = (query.get("t") ?? "1")
     .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
     .map(Number)
     .filter(Number.isFinite)
     .slice(0, 5);
@@ -93,10 +95,15 @@ export function parseUrlState(search = window.location.search) {
     customBasis: parseCustomBasis(query.get("basis")),
     a: 1,
   });
+  const workspaceView = query.get("view") as ViewKind;
   return {
     ...parameters,
     focus,
-    view: focus === "workspace" ? "butterfly" : focus,
+    view: focus === "workspace"
+      ? views.has(workspaceView)
+        ? workspaceView
+        : "butterfly"
+      : focus,
   } satisfies Partial<ScientificParameters> & {
     focus: FocusKind;
     view: ViewKind;
@@ -106,10 +113,14 @@ export function parseUrlState(search = window.location.search) {
 export function writeUrlState(
   parameters: ScientificParameters,
   focus: FocusKind,
+  view?: ViewKind,
 ) {
   const normalized = normalizeParameters(parameters);
   const query = new URLSearchParams();
   query.set("focus", focus);
+  if (focus === "workspace" && view && views.has(view)) {
+    query.set("view", view);
+  }
   query.set("lat", normalized.lattice);
   query.set("p", String(normalized.p));
   query.set("q", String(normalized.q));

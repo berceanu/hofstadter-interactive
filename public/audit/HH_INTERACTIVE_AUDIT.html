@@ -25,6 +25,8 @@
     .verdict { min-width:220px; padding:18px; border:1px solid #2f796c; border-radius:14px; background:#0c2826; }
     .verdict strong { display:block; color:var(--mint); font-size:18px; }
     .verdict span { display:block; margin-top:6px; color:#b5c9c2; font-size:12px; }
+    .verdict.failing { border-color:#7a3b2e; background:#2a120c; }
+    .verdict.failing strong { color:var(--red); }
     section { margin-top:40px; }
     .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
     .metric { padding:16px; border:1px solid var(--line); border-radius:12px; background:rgba(12,24,38,.86); }
@@ -53,8 +55,10 @@
     .dot { width:8px; height:8px; display:inline-block; margin-right:8px; border-radius:50%; }
     .dot.pass { background:var(--mint); box-shadow:0 0 8px #5cf2ce88; }
     .dot.warn { background:var(--gold); }
+    .dot.fail { background:var(--red); box-shadow:0 0 8px #ff806d88; }
     .pill { display:inline-flex; padding:3px 7px; border-radius:999px; font:700 9px ui-monospace,monospace; text-transform:uppercase; }
     .pill.pass { color:#061d17; background:var(--mint); }
+    .pill.fail { color:#2b0d08; background:var(--red); }
     .swatch { width:13px; height:13px; display:inline-block; margin-right:7px; border:1px solid #ffffff33; border-radius:3px; vertical-align:-2px; }
     .gallery { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     figure { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
@@ -87,18 +91,18 @@
       <h1>Harper / Hofstadter Interactive</h1>
       <p>UI behavior, numerical physics, topology, geometry, accessibility, responsive layout, exports, cancellation, and performance were exercised against the actual browser build—not inferred from screenshots alone.</p>
     </div>
-    <div class="verdict">
-      <strong>PASS AFTER REMEDIATION</strong>
-      <span>Honeycomb claim refuted; 14 confirmed issues fixed and regression-covered.</span>
+    <div class="verdict failing">
+      <strong>AUDIT FAILING</strong>
+      <span>One or more recorded audit inputs report a failure — inspect the sections below.</span>
     </div>
   </header>
 
   <section class="metrics" aria-label="Audit summary">
-    <div class="metric"><b>39</b><span>native pytest checks</span></div>
-    <div class="metric"><b>10</b><span>Vitest checks</span></div>
-    <div class="metric"><b>19</b><span>desktop/mobile E2E passes</span></div>
-    <div class="metric"><b>5</b><span>Pyodide parity families</span></div>
-    <div class="metric"><b>6.01 s</b><span>q=97 driven compute</span></div>
+    <div class="metric"><b>5</b><span>lattice families audited</span></div>
+    <div class="metric"><b>2</b><span>Diophantine gap checks</span></div>
+    <div class="metric"><b>23</b><span>driven behavioral checks</span></div>
+    <div class="metric"><b>8</b><span>contrast pairs audited</span></div>
+    <div class="metric"><b>6.04 s</b><span>q=97 browser compute</span></div>
   </section>
 
   <section>
@@ -527,7 +531,7 @@
     <div class="two-col">
       <div class="panel">
         <h3>Measured browser workload</h3>
-        <p>The final driven q=97 square butterfly rendered <b>9,312 states in 6.01 seconds</b>, with a screenshot at 291 states and 3%. The reproducible benchmark records 0.014 s to first meaningful chunk, 6.56 s computation, and 9.753 s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
+        <p>The final driven q=97 square butterfly rendered <b>9,312 states in 6.01 seconds</b>, with a screenshot at 291 states and 3%. The reproducible benchmark records 0.066 s to first meaningful chunk, 6.04 s computation, and 8.818 s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
       </div>
       <div class="panel">
         <h3>Responsiveness safeguards</h3>

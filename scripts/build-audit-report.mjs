@@ -106,8 +106,33 @@ const escapeHtml = (value) =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-const statusClass = (status) =>
-  String(status).startsWith("pass") ? "pass" : "warn";
+const statusClass = (status) => {
+  const value = String(status);
+  if (value.startsWith("pass")) return "pass";
+  if (value.startsWith("warn")) return "warn";
+  return "fail";
+};
+
+// The headline verdict and summary metrics must be computed from the audit
+// inputs: a stale or failing results file has to render as a failure.
+const behavioralChecks = [
+  ...browser.final_checks,
+  ...browser.additional_checks,
+];
+const accessibilityAllPass =
+  accessibility.status === "pass"
+  && accessibility.results.every((result) => result.pass);
+const behavioralAllPass =
+  browser.status === "pass"
+  && behavioralChecks.every((check) =>
+    String(check.status).startsWith("pass"),
+  );
+const auditPassed =
+  physics.status === "pass" && accessibilityAllPass && behavioralAllPass;
+const verdictLabel = auditPassed ? "PASS AFTER REMEDIATION" : "AUDIT FAILING";
+const verdictDetail = auditPassed
+  ? `Honeycomb claim refuted; ${browser.review_verdict.confirmed_findings_fixed} confirmed issues fixed and regression-covered.`
+  : "One or more recorded audit inputs report a failure — inspect the sections below.";
 
 const familyRows = physics.families
   .map(
@@ -186,7 +211,9 @@ const contrastRows = accessibility.results
         <td><span class="swatch" style="background:${result.foreground}"></span>${result.foreground}</td>
         <td><span class="swatch" style="background:${result.background}"></span>${result.background}</td>
         <td>${result.ratio.toFixed(2)}:1</td>
-        <td><span class="pill pass">AA pass</span></td>
+        <td><span class="pill ${result.pass ? "pass" : "fail"}">${
+          result.pass ? "AA pass" : "AA FAIL"
+        }</span></td>
       </tr>`,
   )
   .join("");
@@ -231,6 +258,8 @@ const html = `<!doctype html>
     .verdict { min-width:220px; padding:18px; border:1px solid #2f796c; border-radius:14px; background:#0c2826; }
     .verdict strong { display:block; color:var(--mint); font-size:18px; }
     .verdict span { display:block; margin-top:6px; color:#b5c9c2; font-size:12px; }
+    .verdict.failing { border-color:#7a3b2e; background:#2a120c; }
+    .verdict.failing strong { color:var(--red); }
     section { margin-top:40px; }
     .metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
     .metric { padding:16px; border:1px solid var(--line); border-radius:12px; background:rgba(12,24,38,.86); }
@@ -259,8 +288,10 @@ const html = `<!doctype html>
     .dot { width:8px; height:8px; display:inline-block; margin-right:8px; border-radius:50%; }
     .dot.pass { background:var(--mint); box-shadow:0 0 8px #5cf2ce88; }
     .dot.warn { background:var(--gold); }
+    .dot.fail { background:var(--red); box-shadow:0 0 8px #ff806d88; }
     .pill { display:inline-flex; padding:3px 7px; border-radius:999px; font:700 9px ui-monospace,monospace; text-transform:uppercase; }
     .pill.pass { color:#061d17; background:var(--mint); }
+    .pill.fail { color:#2b0d08; background:var(--red); }
     .swatch { width:13px; height:13px; display:inline-block; margin-right:7px; border:1px solid #ffffff33; border-radius:3px; vertical-align:-2px; }
     .gallery { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     figure { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
@@ -293,18 +324,18 @@ const html = `<!doctype html>
       <h1>Harper / Hofstadter Interactive</h1>
       <p>UI behavior, numerical physics, topology, geometry, accessibility, responsive layout, exports, cancellation, and performance were exercised against the actual browser build—not inferred from screenshots alone.</p>
     </div>
-    <div class="verdict">
-      <strong>PASS AFTER REMEDIATION</strong>
-      <span>Honeycomb claim refuted; ${browser.review_verdict.confirmed_findings_fixed} confirmed issues fixed and regression-covered.</span>
+    <div class="verdict${auditPassed ? "" : " failing"}">
+      <strong>${escapeHtml(verdictLabel)}</strong>
+      <span>${escapeHtml(verdictDetail)}</span>
     </div>
   </header>
 
   <section class="metrics" aria-label="Audit summary">
-    <div class="metric"><b>39</b><span>native pytest checks</span></div>
-    <div class="metric"><b>10</b><span>Vitest checks</span></div>
-    <div class="metric"><b>19</b><span>desktop/mobile E2E passes</span></div>
-    <div class="metric"><b>5</b><span>Pyodide parity families</span></div>
-    <div class="metric"><b>6.01 s</b><span>q=97 driven compute</span></div>
+    <div class="metric"><b>${physics.families.length}</b><span>lattice families audited</span></div>
+    <div class="metric"><b>${physics.diophantine_checks.length}</b><span>Diophantine gap checks</span></div>
+    <div class="metric"><b>${behavioralChecks.length}</b><span>driven behavioral checks</span></div>
+    <div class="metric"><b>${accessibility.results.length}</b><span>contrast pairs audited</span></div>
+    <div class="metric"><b>${benchmark.browser_compute_seconds.toFixed(2)} s</b><span>q=97 browser compute</span></div>
   </section>
 
   <section>

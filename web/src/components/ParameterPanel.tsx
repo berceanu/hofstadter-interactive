@@ -213,6 +213,8 @@ export function ParameterPanel() {
           onBlur={() => {
             const parsed = hoppings
               .split(",")
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0)
               .map(Number)
               .filter(Number.isFinite)
               .slice(0, 5);

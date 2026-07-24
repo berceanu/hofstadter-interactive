@@ -246,7 +246,13 @@ from HT.web import compute_bands, compute_butterfly_batch, compute_dispersion, c
         fraction: 1,
         message: "Local compute engine ready",
       });
-    })();
+    })().catch((error: unknown) => {
+      // Never cache a rejected initialization: a transient asset failure
+      // must stay retryable instead of poisoning every later call.
+      initialization = undefined;
+      runtime = undefined;
+      throw error;
+    });
     return initialization;
   },
 

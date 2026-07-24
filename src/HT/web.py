@@ -124,6 +124,10 @@ def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
 def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
     theta = parameters.get("theta", [1, 3])
     lattice = str(parameters.get("lattice", "square"))
+    numerator = int(parameters.get("p", 1) if p is None else p)
+    denominator = int(parameters.get("q", 31))
+    if denominator < 1 or gcd(numerator, denominator) != 1:
+        raise ValueError("nphi must be a coprime fraction.")
     model_type = _CustomHofstadter if lattice == "custom" else Hofstadter
     custom_arguments = (
         {"custom_basis": _normalized_custom_basis(parameters)}
@@ -131,8 +135,8 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
         else {}
     )
     return model_type(
-        int(parameters.get("p", 1) if p is None else p),
-        int(parameters.get("q", 31)),
+        numerator,
+        denominator,
         a0=float(parameters.get("a", 1.0)),
         t=[float(value) for value in parameters.get("hoppings", [1.0])],
         lat=lattice,
@@ -144,18 +148,48 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
 
 
 def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
-    """Return the CLI-compatible Diophantine Chern coloring when supported."""
+    """Return the CLI-compatible Diophantine Chern coloring when certified.
 
-    base, _ = butterfly_functions.chern(model.p, model.q)
-    if band_count == model.q:
-        return np.asarray(base, dtype=np.int32), True
+    The square-window Diophantine branch (``|t_r| <= q/2``) reproduces the
+    Fukui/Wilson-certified invariants only for the nearest-neighbour square
+    model.  Triangular, Bravais, extra-hopping, and doubled-honeycomb
+    colorings all contradict the certified band topology at accessible
+    fluxes, so they are reported as unavailable rather than mislabeled.
+    """
+
     if (
-        band_count == 2 * model.q
+        band_count == model.q
+        and model.lat == "square"
         and len(model.t) == 1
-        and model.lat == "honeycomb"
     ):
-        return np.asarray(base + list(reversed(base)), dtype=np.int32), True
+        base, _ = butterfly_functions.chern(model.p, model.q)
+        return np.asarray(base, dtype=np.int32), True
     return np.zeros(band_count, dtype=np.int32), False
+
+
+def _gap_hall_labels(p: int, q: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(gap_indices, t_labels)`` for the labelable Diophantine gaps.
+
+    Gap ``r`` separates band ``r - 1`` from band ``r``; its cumulative Hall
+    label is the ``t_r`` solving ``r = q s_r + p t_r`` on the principal
+    branch ``|t_r| <= q/2``.  For even ``q`` the central ``r = q/2`` entry is
+    skipped: the branch condition is ambiguous there and the physical gap is
+    closed, so upstream provides no label for it.
+    """
+
+    _, trs = butterfly_functions.chern(p, q)
+    indices: list[int] = []
+    labels: list[int] = []
+    for r in range(1, q):
+        if q % 2 == 0 and r == q // 2:
+            continue
+        offset = r if q % 2 != 0 or r < q // 2 else r - 1
+        indices.append(r)
+        labels.append(int(trs[offset]))
+    return (
+        np.asarray(indices, dtype=np.int64),
+        np.asarray(labels, dtype=np.int32),
+    )
 
 
 def _topology_diagnostics(
@@ -284,9 +318,11 @@ def _symmetry_path(
     """Return a dense, CLI-compatible closed high-symmetry path.
 
     The path samples every segment with its endpoint omitted because the next
-    segment starts at that same symmetry point.  This mirrors the upstream
-    plotting convention while allowing the inexpensive energy-only refinement
-    to use a much denser path than the eigenvector render grid.
+    segment starts at that same symmetry point; a single closing sample at
+    the first symmetry point is appended so the curve reaches the final tick.
+    This mirrors the upstream plotting convention while allowing the
+    inexpensive energy-only refinement to use a much denser path than the
+    eigenvector render grid.
     """
 
     segment_samples = max(2, int(points_per_segment))
@@ -325,6 +361,14 @@ def _symmetry_path(
         tick_positions.append(float(cursor))
         cursor += segment_samples
     tick_positions.append(float(cursor))
+    closing_fractional = np.asarray(symmetry_points[0][1], dtype=np.float64)
+    closing_momentum = np.matmul(closing_fractional, reciprocal)
+    closing_energies = np.sort(
+        np.linalg.eigvalsh(model.hamiltonian(closing_momentum))
+    )
+    path_blocks.append(closing_energies.reshape(band_count, 1))
+    path_momenta.append(closing_fractional[None, :])
+    path_coordinates.append(np.asarray([float(cursor)], dtype=np.float64))
     path_matrix = np.hstack(path_blocks)
     path_momentum_matrix = np.vstack(path_momenta)
     return (
@@ -459,13 +503,24 @@ def compute_butterfly_batch(
         cherns.append(band_cherns)
 
         if band_count > 1:
+            if model_topology_available:
+                gap_indices, gap_labels = _gap_hall_labels(p, q)
+            else:
+                gap_indices = np.arange(1, band_count, dtype=np.int64)
+                gap_labels = np.zeros(band_count - 1, dtype=np.int32)
             dos.append(
-                np.arange(1, band_count, dtype=np.float64) / float(band_count)
+                gap_indices.astype(np.float64) / float(band_count)
             )
-            gaps.append(np.diff(eigenvalues))
-            gap_cherns.append(np.cumsum(band_cherns, dtype=np.int32)[:-1])
-            gap_fluxes.append(np.full(band_count - 1, p / q, dtype=np.float64))
-            gap_energies.append((eigenvalues[:-1] + eigenvalues[1:]) / 2)
+            gaps.append(
+                eigenvalues[gap_indices] - eigenvalues[gap_indices - 1]
+            )
+            gap_cherns.append(gap_labels)
+            gap_fluxes.append(
+                np.full(gap_indices.size, p / q, dtype=np.float64)
+            )
+            gap_energies.append(
+                (eigenvalues[gap_indices - 1] + eigenvalues[gap_indices]) / 2
+            )
 
     empty_float = np.empty(0, dtype=np.float64)
     empty_int = np.empty(0, dtype=np.int32)

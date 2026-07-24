@@ -632,11 +632,11 @@ test("automatically refines q=31 dispersion without detaching the lifted symmetr
     { timeout: 90_000 },
   );
   await expect(cut).toHaveAttribute("data-dispersion-source", "refined");
-  await expect(cut).toHaveAttribute("data-path-points", "496");
+  await expect(cut).toHaveAttribute("data-path-points", "497");
   await expect(cut).toHaveAttribute("data-path-samples-per-segment", "124");
   await expect(scene).toHaveAttribute("data-surface-samples", "125");
   await expect(scene).toHaveAttribute("data-dispersion-source", "refined");
-  await expect(scene).toHaveAttribute("data-path-points", "496");
+  await expect(scene).toHaveAttribute("data-path-points", "497");
   await expect(scene).toHaveAttribute(
     "data-lifted-path-energy-source",
     "display-surface",
@@ -859,7 +859,7 @@ test("loads quantum geometry only after the user asks for it", async ({
 
 test("exports a clean three-times-scale art PNG", async ({ page }) => {
   await page.goto(
-    "/?focus=butterfly&lat=honeycomb&p=1&q=7&t=1&alpha=1&tn=1&td=3&period=1&samp=7",
+    "/?focus=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
     "Computed locally",
@@ -874,7 +874,7 @@ test("exports a clean three-times-scale art PNG", async ({ page }) => {
   await page.getByRole("button", { name: "Art PNG", exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(
-    "butterfly_honeycomb_q_7_plane_art.png",
+    "butterfly_square_q_7_plane_art.png",
   );
   const path = await download.path();
   expect(path).not.toBeNull();

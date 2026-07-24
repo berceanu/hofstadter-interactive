@@ -61,6 +61,16 @@ function filenameParameters(filename: string) {
   };
 }
 
+function fluxMatchesDenominator(flux: Float64Array, q: number) {
+  if (!Number.isInteger(q) || q < 1) return false;
+  for (let index = 0; index < flux.length; index += 1) {
+    if (Math.abs(flux[index] * q - Math.round(flux[index] * q)) > 1e-7) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function parametersFromMetadata(
   metadata: Record<string, unknown> | undefined,
   filename: string,
@@ -88,15 +98,35 @@ function parametersFromMetadata(
         .filter(Array.isArray)
         .map((point) => [Number(point[0]), Number(point[1])] as [number, number])
     : defaultParameters.customBasis;
+  // The denominator must actually divide every flux in the archive.  The
+  // app's own metadata is authoritative and fails hard when inconsistent;
+  // a filename hint (files get renamed) silently falls back to the data.
+  let q: number;
+  if (raw.q !== undefined) {
+    q = Number(raw.q);
+    if (!fluxMatchesDenominator(fallbackFlux, q)) {
+      throw new Error(
+        "The archive's flux values do not match its declared denominator.",
+      );
+    }
+  } else if (
+    filenameFallback.q !== undefined
+    && fluxMatchesDenominator(fallbackFlux, filenameFallback.q)
+  ) {
+    q = filenameFallback.q;
+  } else {
+    q = inferredDenominator(fallbackFlux);
+    if (!fluxMatchesDenominator(fallbackFlux, q)) {
+      throw new Error(
+        "The archive's flux values do not fit any denominator up to 199.",
+      );
+    }
+  }
   return normalizeParameters({
     ...defaultParameters,
     lattice,
     p: Number(raw.p ?? defaultParameters.p),
-    q: Number(
-      raw.q
-      ?? filenameFallback.q
-      ?? inferredDenominator(fallbackFlux),
-    ),
+    q,
     a: Number(raw.a ?? defaultParameters.a),
     hoppings,
     alpha: Number(raw.alpha ?? defaultParameters.alpha),
@@ -156,22 +186,18 @@ function archiveView(
     : "butterfly";
 }
 
-function fitFloat(array: Float64Array | undefined, length: number) {
-  if (!array) return new Float64Array(length);
-  if (array.length === length) return array;
-  if (array.length > length) return array.slice(0, length);
-  const output = new Float64Array(length);
-  output.set(array);
-  return output;
-}
-
-function fitInt(array: Int32Array | undefined, length: number) {
-  if (!array) return new Int32Array(length);
-  if (array.length === length) return array;
-  if (array.length > length) return array.slice(0, length);
-  const output = new Int32Array(length);
-  output.set(array);
-  return output;
+// A present-but-mismatched array is a corrupt or foreign archive; padding it
+// would fabricate physical-looking states (band 0, C = 0), so reject instead.
+function requireLength(
+  name: string,
+  array: { length: number } | undefined,
+  length: number,
+) {
+  if (array && array.length !== length) {
+    throw new Error(
+      `Array ${name} holds ${array.length} values, expected ${length}.`,
+    );
+  }
 }
 
 export interface NpzImportSummary {
@@ -202,71 +228,93 @@ export function restoreNpzBytes(
     asFloat(arrays.get("state_energy"))
     ?? (view === "butterfly" ? aliasEnergy : undefined)
     ?? new Float64Array();
-  const stateCount = Math.min(stateFlux.length, stateEnergy.length);
-  const fittedStateFlux = stateFlux.slice(0, stateCount);
-  const fittedStateEnergy = stateEnergy.slice(0, stateCount);
-  const stateBand = fitInt(
+  if (stateFlux.length !== stateEnergy.length) {
+    throw new Error(
+      "state_flux and state_energy hold different numbers of values.",
+    );
+  }
+  const stateCount = stateFlux.length;
+  const providedBand =
     asInt(arrays.get("state_band"))
-      ?? (view === "butterfly" ? asInt(arrays.get("band")) : undefined),
-    stateCount,
-  );
-  const stateChern = fitInt(
+    ?? (view === "butterfly" ? asInt(arrays.get("band")) : undefined);
+  const providedChern =
     asInt(arrays.get("state_chern"))
-      ?? (view === "butterfly" ? asInt(arrays.get("chern")) : undefined),
-    stateCount,
-  );
-  const derived = deriveGaps(fittedStateFlux, fittedStateEnergy, stateChern);
-  const rawGapFlux =
+    ?? (view === "butterfly" ? asInt(arrays.get("chern")) : undefined);
+  requireLength("state_band", providedBand, stateCount);
+  requireLength("state_chern", providedChern, stateCount);
+  const stateBand = providedBand ?? new Int32Array(stateCount);
+  const stateChern = providedChern ?? new Int32Array(stateCount);
+  const derived = deriveGaps(stateFlux, stateEnergy, stateChern);
+  const providedGapFlux =
     asFloat(arrays.get("gap_flux"))
-    ?? (view === "wannier" ? aliasFlux : undefined)
-    ?? derived.gapFlux;
-  const rawGapEnergy =
+    ?? (view === "wannier" ? aliasFlux : undefined);
+  const providedGapEnergy =
     asFloat(arrays.get("gap_energy"))
-    ?? (view === "wannier" ? aliasEnergy : undefined)
-    ?? derived.gapEnergy;
-  const rawGap =
-    asFloat(arrays.get("gap"))
-    ?? derived.gap;
-  const rawDos =
-    asFloat(arrays.get("integrated_dos"))
-    ?? derived.dos;
-  const rawGapChern =
+    ?? (view === "wannier" ? aliasEnergy : undefined);
+  const providedGap = asFloat(arrays.get("gap"));
+  const providedDos = asFloat(arrays.get("integrated_dos"));
+  const providedGapChern =
     asInt(arrays.get("gap_chern"))
-    ?? (view === "wannier" ? asInt(arrays.get("chern")) : undefined)
-    ?? derived.gapChern;
-  const gapCount = Math.min(
-    rawGapFlux.length,
-    rawGapEnergy.length,
-    rawGap.length,
-    rawDos.length,
-    rawGapChern.length,
-  );
+    ?? (view === "wannier" ? asInt(arrays.get("chern")) : undefined);
+  const providedGapArrays = [
+    providedGapFlux,
+    providedGapEnergy,
+    providedGap,
+    providedDos,
+    providedGapChern,
+  ].filter((array) => array !== undefined);
+  const gapCount = providedGapArrays.length
+    ? providedGapArrays[0].length
+    : derived.gapFlux.length;
+  requireLength("gap_flux", providedGapFlux, gapCount);
+  requireLength("gap_energy", providedGapEnergy, gapCount);
+  requireLength("gap", providedGap, gapCount);
+  requireLength("integrated_dos", providedDos, gapCount);
+  requireLength("gap_chern", providedGapChern, gapCount);
+  const fallbackGap = (derived_: NpyArray, kind: string) => {
+    if (derived_.length !== gapCount) {
+      throw new Error(
+        `The archive omits ${kind} and it cannot be derived consistently.`,
+      );
+    }
+    return derived_;
+  };
+  const gapFlux = providedGapFlux
+    ?? (fallbackGap(derived.gapFlux, "gap_flux") as Float64Array);
+  const gapEnergy = providedGapEnergy
+    ?? (fallbackGap(derived.gapEnergy, "gap_energy") as Float64Array);
+  const gap = providedGap
+    ?? (fallbackGap(derived.gap, "gap") as Float64Array);
+  const dos = providedDos
+    ?? (fallbackGap(derived.dos, "integrated_dos") as Float64Array);
+  const gapChern = providedGapChern
+    ?? (fallbackGap(derived.gapChern, "gap_chern") as Int32Array);
   if (!stateCount && !gapCount) {
     throw new Error("The NPZ archive has no plottable sweep data.");
   }
   const parameters = parametersFromMetadata(
     metadata,
     filename,
-    stateCount ? fittedStateFlux : rawGapFlux,
+    stateCount ? stateFlux : gapFlux,
   );
   const topologyFlag = asInt(arrays.get("topology_available"));
   const topologyAvailable = topologyFlag
     ? topologyFlag[0] !== 0
     : stateChern.some((value) => value !== 0)
-      || rawGapChern.some((value) => value !== 0);
+      || gapChern.some((value) => value !== 0);
   const requestId = `npz-${Date.now().toString(36)}`;
   const chunk: ButterflyChunk = {
     requestId,
     topologyAvailable,
-    flux: fittedStateFlux,
-    energy: fittedStateEnergy,
+    flux: stateFlux,
+    energy: stateEnergy,
     band: stateBand,
     chern: stateChern,
-    dos: fitFloat(rawDos, gapCount),
-    gap: fitFloat(rawGap, gapCount),
-    gapChern: fitInt(rawGapChern, gapCount),
-    gapFlux: fitFloat(rawGapFlux, gapCount),
-    gapEnergy: fitFloat(rawGapEnergy, gapCount),
+    dos,
+    gap,
+    gapChern,
+    gapFlux,
+    gapEnergy,
     progress: 1,
   };
   const key = sweepComputationKey(parameters);

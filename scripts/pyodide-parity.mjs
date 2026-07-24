@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadPyodide } from "pyodide";
 
@@ -6,12 +6,16 @@ const root = new URL("..", import.meta.url).pathname;
 const indexURL = join(root, "public", "pyodide");
 const pyodide = await loadPyodide({ indexURL });
 await pyodide.loadPackage("numpy");
-const wheel = join(
-  root,
-  "public",
-  "python",
-  "hofstadtertools-1.0.7-py3-none-any.whl",
+const wheelDirectory = join(root, "public", "python");
+const wheelName = (await readdir(wheelDirectory)).find(
+  (name) => name.startsWith("hofstadtertools-") && name.endsWith(".whl"),
 );
+if (!wheelName) {
+  throw new Error(
+    `No hofstadtertools wheel in ${wheelDirectory}; run npm run prepare:static.`,
+  );
+}
+const wheel = join(wheelDirectory, wheelName);
 await pyodide.loadPackage(wheel);
 await pyodide.runPythonAsync(`
 import json
@@ -190,7 +194,7 @@ if (
   refinedDispersion.surface_samples !== 21
   || refinedDispersion.path_samples_per_segment !== 24
   || dispersionEnergy.length !== 5 * 21 * 21
-  || Array.from(refinedDispersion.path_energy).length !== 5 * 4 * 24
+  || Array.from(refinedDispersion.path_energy).length !== 5 * (4 * 24 + 1)
 ) {
   throw new Error("Lazy dispersion refinement shape mismatch in Pyodide");
 }

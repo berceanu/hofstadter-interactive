@@ -85,9 +85,18 @@ export class ResultCache {
     }
   }
 
+  private recall<T>(cache: Map<string, T>, key: string): T | undefined {
+    const value = cache.get(key);
+    if (value !== undefined) {
+      cache.delete(key);
+      cache.set(key, value);
+    }
+    return value;
+  }
+
   expectButterfly(key: string) {
     this.expectedButterflyKey = key;
-    const cached = this.butterflyResults.get(key);
+    const cached = this.recall(this.butterflyResults, key);
     this.publish({
       ...(cached ? { butterfly: cached, butterflyKey: key } : {}),
       butterflyStale: !cached && Boolean(this.snapshot.butterfly),
@@ -97,7 +106,7 @@ export class ResultCache {
 
   expectBands(key: string) {
     this.expectedBandsKey = key;
-    const cached = this.bandResults.get(key);
+    const cached = this.recall(this.bandResults, key);
     this.publish({
       ...(cached ? { bands: cached, bandsKey: key } : {}),
       bandsStale: !cached && Boolean(this.snapshot.bands),
@@ -107,7 +116,7 @@ export class ResultCache {
 
   expectLattice(key: string) {
     this.expectedLatticeKey = key;
-    const cached = this.latticeResults.get(key);
+    const cached = this.recall(this.latticeResults, key);
     this.publish({
       ...(cached ? { lattice: cached, latticeKey: key } : {}),
       latticeStale: !cached && Boolean(this.snapshot.lattice),
@@ -117,7 +126,7 @@ export class ResultCache {
 
   expectGeometry(key: string) {
     this.expectedGeometryKey = key;
-    const cached = this.geometryResults.get(key);
+    const cached = this.recall(this.geometryResults, key);
     this.publish({
       ...(cached ? { geometry: cached, geometryKey: key } : {}),
       geometryStale: !cached && Boolean(this.snapshot.geometry),
@@ -127,7 +136,7 @@ export class ResultCache {
 
   expectTopology(key: string) {
     this.expectedTopologyKey = key;
-    const cached = this.topologyResults.get(key);
+    const cached = this.recall(this.topologyResults, key);
     this.publish({
       ...(cached ? { topology: cached, topologyKey: key } : {}),
       topologyStale: !cached && Boolean(this.snapshot.topology),
@@ -137,7 +146,7 @@ export class ResultCache {
 
   expectDispersion(key: string) {
     this.expectedDispersionKey = key;
-    const cached = this.dispersionResults.get(key);
+    const cached = this.recall(this.dispersionResults, key);
     this.publish({
       ...(cached ? { dispersion: cached, dispersionKey: key } : {}),
       dispersionStale: !cached && Boolean(this.snapshot.dispersion),
@@ -146,27 +155,27 @@ export class ResultCache {
   }
 
   hasButterfly(key: string) {
-    return this.butterflyResults.has(key);
+    return this.recall(this.butterflyResults, key) !== undefined;
   }
 
   hasBands(key: string) {
-    return this.bandResults.has(key);
+    return this.recall(this.bandResults, key) !== undefined;
   }
 
   hasLattice(key: string) {
-    return this.latticeResults.has(key);
+    return this.recall(this.latticeResults, key) !== undefined;
   }
 
   hasGeometry(key: string) {
-    return this.geometryResults.has(key);
+    return this.recall(this.geometryResults, key) !== undefined;
   }
 
   hasTopology(key: string) {
-    return this.topologyResults.has(key);
+    return this.recall(this.topologyResults, key) !== undefined;
   }
 
   hasDispersion(key: string) {
-    return this.dispersionResults.has(key);
+    return this.recall(this.dispersionResults, key) !== undefined;
   }
 
   isExpected(
@@ -228,6 +237,10 @@ export class ResultCache {
       butterflyKey: working.key,
       butterflyStale: false,
     });
+  }
+
+  abandonButterfly(requestId: string) {
+    this.butterflyWorking.delete(requestId);
   }
 
   restoreButterfly(result: ButterflyResult, key: string) {
@@ -304,6 +317,12 @@ export class ResultCache {
 
   beginDispersion(key: string) {
     this.expectedDispersionKey ??= key;
+  }
+
+  clearDispersionExpectation(key: string) {
+    if (this.expectedDispersionKey !== key) return;
+    this.expectedDispersionKey = undefined;
+    this.publish({ dispersionStale: false });
   }
 
   setDispersion(result: DispersionResult, key = result.requestId) {

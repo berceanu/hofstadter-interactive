@@ -77,12 +77,14 @@ export function extent(
   values: ArrayLike<number>,
   fallback: [number, number],
 ): [number, number] {
-  if (!values.length) return fallback;
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
   for (let index = 0; index < values.length; index += 1) {
-    min = Math.min(min, values[index]);
-    max = Math.max(max, values[index]);
+    const value = values[index];
+    if (!Number.isFinite(value)) continue;
+    if (value < min) min = value;
+    if (value > max) max = value;
   }
+  if (min > max) return fallback;
   return min === max ? [min - 1, max + 1] : [min, max];
 }

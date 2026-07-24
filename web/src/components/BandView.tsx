@@ -15,11 +15,11 @@ import type {
   TopologyResult,
 } from "../compute/contracts";
 import {
+  activeTopologyComputationKey,
   baseTopologyGridSufficient,
   bandComputationKey,
   dispersionComputationKey,
   dispersionRefinementGrid,
-  topologyComputationKey,
   topologyRefinementPlan,
 } from "../compute/computeKeys";
 import { HelpTooltip } from "./HelpTooltip";
@@ -35,6 +35,36 @@ const CONTOUR_SURFACE_OFFSET = 0.018;
 const CONTOUR_MINOR_HALF_WIDTH = 0.01;
 const CONTOUR_MAJOR_HALF_WIDTH = 0.017;
 const BAND_CUT_MAX_ZOOM = 32;
+
+// Per-band surface views must keep a stable identity across renders:
+// Surface's geometry memo is keyed on array identity, so a fresh `.slice()`
+// every render would rebuild the full mesh on each pointer event.  Result
+// arrays are immutable once published, making this cache safe; entries die
+// with their source array.
+const surfaceSliceCache = new WeakMap<
+  Float64Array,
+  Map<string, Float64Array>
+>();
+
+function surfaceSlice(source: Float64Array, offset: number, count: number) {
+  let spans = surfaceSliceCache.get(source);
+  if (!spans) {
+    spans = new Map();
+    surfaceSliceCache.set(source, spans);
+  }
+  const key = `${offset}:${count}`;
+  let view = spans.get(key);
+  if (!view) {
+    view = source.slice(offset, offset + count);
+    while (spans.size >= 64) {
+      const oldest = spans.keys().next().value;
+      if (oldest === undefined) break;
+      spans.delete(oldest);
+    }
+    spans.set(key, view);
+  }
+  return view;
+}
 
 interface BandCutViewport {
   zoom: number;
@@ -1612,6 +1642,7 @@ function WilsonPlot({
 export function BandView({ compact = false }: { compact?: boolean }) {
   const {
     bands,
+    bandsKey,
     bandsStale,
     geometry,
     geometryStale,
@@ -1651,10 +1682,13 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     () => () => setBandCutZoom(1),
     [setBandCutZoom],
   );
+  // Reset the Wilson marker only when its own sampling changes: a dispersion
+  // refinement landing in the background must not discard a user's k₂ pick.
+  const wilsonSampleCount = topology?.samplesY ?? bands?.samples;
   useEffect(() => {
     setSelectedWilsonIndex(undefined);
     setMarkerSource("path");
-  }, [bands?.requestId, dispersion?.requestId, topology?.requestId]);
+  }, [bands?.requestId, wilsonSampleCount]);
   useEffect(() => {
     setSelectedPathIndex(0);
   }, [bands?.requestId, dispersion?.requestId]);
@@ -1663,9 +1697,11 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   }
   const bandKey = bandComputationKey(parameters);
   const topologyPlan = topologyRefinementPlan(parameters);
-  const expectedTopologyKey = topologyComputationKey(
+  const expectedTopologyKey = activeTopologyComputationKey(
     parameters,
     selectedBand,
+    bands,
+    bandsKey,
     topologyPlan,
   );
   const refinedTopology =
@@ -1736,19 +1772,13 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     bands.bands - 1,
   );
   const baseOffset = displayBand * baseCount;
-  const baseEnergySurface = bands.energy.slice(
-    baseOffset,
-    baseOffset + baseCount,
-  );
+  const baseEnergySurface = surfaceSlice(bands.energy, baseOffset, baseCount);
   const refinedCount =
     (refinedDispersion?.surfaceSamples ?? 0)
     * (refinedDispersion?.surfaceSamples ?? 0);
   const refinedOffset = displayBand * refinedCount;
   const energySurface = refinedDispersion
-    ? refinedDispersion.energy.slice(
-        refinedOffset,
-        refinedOffset + refinedCount,
-      )
+    ? surfaceSlice(refinedDispersion.energy, refinedOffset, refinedCount)
     : baseEnergySurface;
   const energySurfaceSamples =
     refinedDispersion?.surfaceSamples ?? bands.samples;
@@ -1756,16 +1786,17 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   const geometryMatches =
     geometry?.samples === bands.samples && geometry.bands === bands.bands;
   const geometrySurface = wantsGeometry && geometryMatches
-    ? (metric === "gxx" ? geometry.gxx : geometry.gxy).slice(
+    ? surfaceSlice(
+        metric === "gxx" ? geometry.gxx : geometry.gxy,
         baseOffset,
-        baseOffset + baseCount,
+        baseCount,
       )
     : undefined;
   const geometryPending = wantsGeometry && !geometryMatches;
   const surface = metric === "energy"
     ? energySurface
     : metric === "berry"
-      ? bands.berry.slice(baseOffset, baseOffset + baseCount)
+      ? surfaceSlice(bands.berry, baseOffset, baseCount)
       : geometrySurface ?? energySurface;
   const surfaceSamples =
     metric === "energy" || geometryPending

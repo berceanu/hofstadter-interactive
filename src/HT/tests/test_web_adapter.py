@@ -57,10 +57,8 @@ def test_butterfly_adapter_matches_model(lattice, hoppings, period, theta):
         reference_flux.extend([p / 7] * len(energies))
         reference_energy.extend(energies)
         base, _ = chern(p, 7)
-        if len(energies) == 7:
+        if lattice == "square" and len(hoppings) == 1 and len(energies) == 7:
             reference_chern.extend(base)
-        elif len(energies) == 14 and len(hoppings) == 1:
-            reference_chern.extend(base + list(reversed(base)))
         else:
             reference_chern.extend([0] * len(energies))
     assert np.allclose(result["flux"], reference_flux, rtol=0, atol=0)
@@ -227,10 +225,10 @@ def test_square_q31_dispersion_refinement_resolves_symmetry_path_aliasing():
     assert refined["surface_samples"] == 125
     assert refined["path_samples_per_segment"] == 124
     assert refined["energy"].shape == (31 * 125 * 125,)
-    assert refined["path_x"].shape == (4 * 124,)
+    assert refined["path_x"].shape == (4 * 124 + 1,)
     assert refined["path_k1"].shape == refined["path_x"].shape
     assert refined["path_k2"].shape == refined["path_x"].shape
-    assert refined["path_energy"].shape == (31 * 4 * 124,)
+    assert refined["path_energy"].shape == (31 * (4 * 124 + 1),)
     assert np.isfinite(refined["energy"]).all()
     assert np.isfinite(refined["path_energy"]).all()
 
@@ -476,8 +474,9 @@ def test_honeycomb_has_threefold_coordination_and_graphene_limits():
     "lattice,hoppings,period,expected",
     [
         ("square", [1.0], 1, True),
-        ("triangular", [1.0], 1, True),
-        ("honeycomb", [1.0], 1, True),
+        ("square", [1.0, 0.2], 1, False),
+        ("triangular", [1.0], 1, False),
+        ("honeycomb", [1.0], 1, False),
         ("honeycomb", [1.0, 1.0], 6, False),
         ("kagome", [1.0], 8, False),
     ],
@@ -618,3 +617,96 @@ def test_touching_bands_use_gauge_invariant_group_cherns(
         )
     assert groups == expected_groups
     assert sum(result["chern"][start] for start, _ in groups) == 0
+
+
+@pytest.mark.parametrize("q", [4, 6])
+def test_even_q_gap_labels_follow_the_diophantine_table(q):
+    """Even-q gap labels must come from t_r, not a cumsum of the coloring.
+
+    The upstream per-band coloring duplicates the central entry for even q,
+    so cumulative sums double-count it and mislabel every gap above the
+    central band touching.  The ambiguous central r = q/2 gap carries no
+    label and is omitted entirely.
+    """
+
+    result = compute_butterfly_batch(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "q": q,
+        },
+        1,
+        2,
+    )
+    _, trs = chern(1, q)
+    expected_rs = [r for r in range(1, q) if r != q // 2]
+    expected_labels = [
+        trs[r if r < q // 2 else r - 1] for r in expected_rs
+    ]
+    assert result["topology_available"] is True
+    assert list(result["gap_chern"]) == expected_labels
+    assert np.allclose(
+        result["dos"], np.asarray(expected_rs, dtype=np.float64) / q
+    )
+    assert result["gap"].shape == (len(expected_rs),)
+    assert result["gap_energy"].shape == (len(expected_rs),)
+    assert result["gap_flux"].shape == (len(expected_rs),)
+
+
+def test_odd_q_gap_labels_match_the_interior_tr_list():
+    result = compute_butterfly_batch(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "q": 5,
+        },
+        1,
+        2,
+    )
+    _, trs = chern(1, 5)
+    assert list(result["gap_chern"]) == list(trs[1:-1])
+    assert np.allclose(result["dos"], np.arange(1, 5) / 5)
+
+
+def test_non_coprime_flux_is_rejected():
+    with pytest.raises(ValueError, match="coprime"):
+        compute_bands(
+            {
+                "lattice": "square",
+                "hoppings": [1.0],
+                "period": 1,
+                "theta": [1, 2],
+                "alpha": 1.0,
+                "p": 2,
+                "q": 4,
+                "samples": 7,
+            }
+        )
+
+
+def test_symmetry_path_reaches_the_closing_tick():
+    result = compute_bands(
+        {
+            "lattice": "square",
+            "hoppings": [1.0],
+            "period": 1,
+            "theta": [1, 2],
+            "alpha": 1.0,
+            "p": 1,
+            "q": 3,
+            "samples": 7,
+        }
+    )
+    assert result["path_x"][-1] == result["path_ticks"][-1]
+    path_matrix = result["path_energy"].reshape(3, -1)
+    assert np.allclose(
+        path_matrix[:, -1], path_matrix[:, 0], rtol=1e-12, atol=1e-12
+    )
+    assert result["path_k1"][-1] == result["path_k1"][0]
+    assert result["path_k2"][-1] == result["path_k2"][0]

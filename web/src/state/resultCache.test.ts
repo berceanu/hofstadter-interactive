@@ -98,6 +98,38 @@ describe("ResultCache stale-result behavior", () => {
     expect(cache.getSnapshot().topologyStale).toBe(false);
   });
 
+  it("drops the working entry of an abandoned butterfly sweep", () => {
+    const cache = new ResultCache();
+    cache.expectButterfly("sweep-key");
+    cache.beginButterfly("sweep", "sweep-key");
+    cache.appendButterfly(butterflyChunk("sweep", 1 / 3));
+
+    cache.abandonButterfly("sweep");
+    cache.appendButterfly(butterflyChunk("sweep", 2 / 3));
+    expect(cache.getSnapshot().butterfly?.chunks).toHaveLength(1);
+
+    cache.completeButterfly("sweep", 5);
+    expect(cache.getSnapshot().butterfly?.complete).toBe(false);
+  });
+
+  it("evicts the least recently used entry, refreshing recency on reads", () => {
+    const cache = new ResultCache();
+    for (let index = 0; index < 6; index += 1) {
+      cache.expectBands(`key-${index}`);
+      cache.setBands(
+        { requestId: `bands-${index}` } as BandResult,
+        `key-${index}`,
+      );
+    }
+    // Reads refresh recency, so key-0 must survive the next insertion.
+    expect(cache.hasBands("key-0")).toBe(true);
+    cache.expectBands("key-6");
+    cache.setBands({ requestId: "bands-6" } as BandResult, "key-6");
+
+    expect(cache.hasBands("key-0")).toBe(true);
+    expect(cache.hasBands("key-1")).toBe(false);
+  });
+
   it("keeps a stale dispersion visible until its keyed replacement arrives", () => {
     const cache = new ResultCache();
     cache.expectDispersion("dispersion-a");
