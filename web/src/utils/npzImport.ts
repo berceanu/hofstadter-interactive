@@ -35,18 +35,21 @@ function asInt(array?: NpyArray) {
 }
 
 function inferredDenominator(flux: Float64Array) {
-  if (!flux.length) return defaultParameters.q;
+  if (!flux.length) return undefined;
   for (let q = 2; q <= 199; q += 1) {
     let matches = true;
     for (let index = 0; index < flux.length; index += 1) {
-      if (Math.abs(flux[index] * q - Math.round(flux[index] * q)) > 1e-7) {
+      if (
+        !Number.isFinite(flux[index])
+        || Math.abs(flux[index] * q - Math.round(flux[index] * q)) > 1e-7
+      ) {
         matches = false;
         break;
       }
     }
     if (matches) return q;
   }
-  return defaultParameters.q;
+  return undefined;
 }
 
 function filenameParameters(filename: string) {
@@ -59,16 +62,6 @@ function filenameParameters(filename: string) {
     ...(lattice ? { lattice } : {}),
     ...(qMatch ? { q: Number(qMatch[1]) } : {}),
   };
-}
-
-function fluxMatchesDenominator(flux: Float64Array, q: number) {
-  if (!Number.isInteger(q) || q < 1) return false;
-  for (let index = 0; index < flux.length; index += 1) {
-    if (Math.abs(flux[index] * q - Math.round(flux[index] * q)) > 1e-7) {
-      return false;
-    }
-  }
-  return true;
 }
 
 function parametersFromMetadata(
@@ -98,27 +91,20 @@ function parametersFromMetadata(
         .filter(Array.isArray)
         .map((point) => [Number(point[0]), Number(point[1])] as [number, number])
     : defaultParameters.customBasis;
-  // The denominator must actually divide every flux in the archive.  The
-  // app's own metadata is authoritative and fails hard when inconsistent;
-  // a filename hint (files get renamed) silently falls back to the data.
-  let q: number;
+  // The smallest common denominator is the canonical denominator of a
+  // fixed-q sweep.  Merely dividing every flux is not enough: q=14 also
+  // divides q=7 data, but would describe a different physical sweep.
+  const q = inferredDenominator(fallbackFlux);
+  if (q === undefined) {
+    throw new Error(
+      "The archive's flux values do not fit any denominator up to 199.",
+    );
+  }
   if (raw.q !== undefined) {
-    q = Number(raw.q);
-    if (!fluxMatchesDenominator(fallbackFlux, q)) {
+    const declaredQ = Number(raw.q);
+    if (!Number.isInteger(declaredQ) || declaredQ !== q) {
       throw new Error(
         "The archive's flux values do not match its declared denominator.",
-      );
-    }
-  } else if (
-    filenameFallback.q !== undefined
-    && fluxMatchesDenominator(fallbackFlux, filenameFallback.q)
-  ) {
-    q = filenameFallback.q;
-  } else {
-    q = inferredDenominator(fallbackFlux);
-    if (!fluxMatchesDenominator(fallbackFlux, q)) {
-      throw new Error(
-        "The archive's flux values do not fit any denominator up to 199.",
       );
     }
   }

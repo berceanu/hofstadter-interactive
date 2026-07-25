@@ -139,7 +139,7 @@ describe("NPZ spectrum archives", () => {
       {
         schema: "hofstadter-interactive/1",
         view: "butterfly",
-        parameters: { ...defaultParameters, q: 3 },
+        parameters: { ...defaultParameters, q: 14 },
       },
     );
     expect(() => restoreNpzBytes(archive, "spectrum.npz")).toThrow(
@@ -155,7 +155,7 @@ describe("NPZ spectrum archives", () => {
       },
       { schema: "hofstadter-interactive/1", view: "butterfly" },
     );
-    const summary = restoreNpzBytes(archive, "renamed-square-q3-butterfly.npz");
+    const summary = restoreNpzBytes(archive, "renamed-square-q14-butterfly.npz");
     expect(summary.parameters.q).toBe(7);
   });
 

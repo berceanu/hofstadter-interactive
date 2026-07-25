@@ -34,11 +34,16 @@ import {
 import { restoreNpzFile } from "../utils/npzImport";
 import {
   activeTopologyComputationKey,
+  bandComputationKey,
   baseTopologyGridSufficient,
   dispersionComputationKey,
   dispersionRefinementGrid,
   topologyRefinementPlan,
 } from "../compute/computeKeys";
+import {
+  exportsPending,
+  fluxFraction,
+} from "../utils/viewIntegrity";
 
 const views: { id: ViewKind; label: string; short: string }[] = [
   { id: "butterfly", label: "Butterfly", short: "01" },
@@ -85,29 +90,6 @@ function RuntimeStatus() {
       )}
     </div>
   );
-}
-
-// Imported archives can hold fluxes whose denominator differs from the live
-// q, so the displayed fraction must come from the state's own flux value.
-function fluxFraction(flux: number, preferredDenominator: number) {
-  const preferred = Math.round(flux * preferredDenominator);
-  if (Math.abs(flux - preferred / preferredDenominator) < 1e-9) {
-    return { numerator: preferred, denominator: preferredDenominator };
-  }
-  let bestNumerator = Math.round(flux);
-  let bestDenominator = 1;
-  let bestError = Math.abs(flux - bestNumerator);
-  for (let denominator = 2; denominator <= 199; denominator += 1) {
-    const numerator = Math.round(flux * denominator);
-    const error = Math.abs(flux - numerator / denominator);
-    if (error < bestError - 1e-15) {
-      bestNumerator = numerator;
-      bestDenominator = denominator;
-      bestError = error;
-      if (error < 1e-12) break;
-    }
-  }
-  return { numerator: bestNumerator, denominator: bestDenominator };
 }
 
 function SelectionReadout() {
@@ -350,27 +332,6 @@ function BandTools() {
   );
 }
 
-// Exports read arrays from the cache but label them with the live
-// parameters, so they must pause while the visible result is a stale
-// placeholder for a recomputation still in flight.
-function exportsPending(
-  view: ViewKind,
-  cache: {
-    butterfly?: { complete: boolean };
-    butterflyStale: boolean;
-    bands?: unknown;
-    bandsStale: boolean;
-    lattice?: unknown;
-    latticeStale: boolean;
-  },
-) {
-  if (view === "butterfly" || view === "wannier") {
-    return cache.butterflyStale || !cache.butterfly?.complete;
-  }
-  if (view === "bands") return cache.bandsStale || !cache.bands;
-  return cache.latticeStale || !cache.lattice;
-}
-
 const EXPORT_PENDING_HINT =
   "Recomputing — exports resume when the view matches the current parameters";
 
@@ -444,8 +405,12 @@ function WorkspacePanel({
         )
       ? cache.dispersion
       : undefined;
+  const currentGeometry =
+    cache.geometryKey === bandComputationKey(parameters)
+      ? cache.geometry
+      : undefined;
   const [transparentArt, setTransparentArt] = useState(false);
-  const exportsDisabled = exportsPending(id, cache);
+  const exportsDisabled = exportsPending(id, parameters, cache);
 
   return (
     <section
@@ -486,7 +451,7 @@ function WorkspacePanel({
               flattenButterfly(cache.butterfly),
               cache.bands,
               cache.lattice,
-              cache.geometry,
+              currentGeometry,
               currentTopology,
               currentDispersion,
             )
@@ -505,7 +470,7 @@ function WorkspacePanel({
               flattenButterfly(cache.butterfly),
               cache.bands,
               cache.lattice,
-              cache.geometry,
+              currentGeometry,
               currentTopology,
               currentDispersion,
             )
@@ -566,6 +531,10 @@ function WorkspacePanel({
 function WorkspaceDashboard() {
   const root = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
+  const cache = useResultCache();
+  const exportsDisabled = views.some(({ id }) =>
+    exportsPending(id, parameters, cache)
+  );
   return (
     <main className="single-workspace" ref={root} data-workspace>
       <div className="workspace-commandbar">
@@ -578,6 +547,8 @@ function WorkspaceDashboard() {
         <RuntimeStatus />
         <div className="workspace-share-tools">
           <button
+            disabled={exportsDisabled}
+            title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
             onClick={() => {
               if (root.current) {
                 exportPng(root.current, parameters, "workspace").catch(reportExportError);
@@ -673,6 +644,10 @@ function FocusedView({ view }: { view: ViewKind }) {
         )
       ? cache.dispersion
       : undefined;
+  const currentGeometry =
+    cache.geometryKey === bandComputationKey(parameters)
+      ? cache.geometry
+      : undefined;
   const colorMode = useAppStore((state) => state.colorMode);
   const [transparentArt, setTransparentArt] = useState(false);
   const butterfly = useMemo(
@@ -680,7 +655,7 @@ function FocusedView({ view }: { view: ViewKind }) {
     [cache.butterfly],
   );
   const help = resultHelp[view];
-  const exportsDisabled = exportsPending(view, cache);
+  const exportsDisabled = exportsPending(view, parameters, cache);
 
   return (
     <main className="workspace focused-workspace">
@@ -732,7 +707,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     butterfly,
                     cache.bands,
                     cache.lattice,
-                    cache.geometry,
+                    currentGeometry,
                     currentTopology,
                     currentDispersion,
                   )
@@ -750,7 +725,7 @@ function FocusedView({ view }: { view: ViewKind }) {
                     butterfly,
                     cache.bands,
                     cache.lattice,
-                    cache.geometry,
+                    currentGeometry,
                     currentTopology,
                     currentDispersion,
                   )

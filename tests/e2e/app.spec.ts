@@ -802,7 +802,19 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
   );
   const plot = page.locator('[data-flux-plot="butterfly"]');
   const oldEnergyMaximum = await plot.getAttribute("data-energy-max");
+  const butterflyExports = [
+    page.getByRole("button", { name: "Export Hofstadter butterfly CSV" }),
+    page.getByRole("button", { name: "Export Hofstadter butterfly NPZ" }),
+    page.getByRole("button", { name: "Export Hofstadter butterfly PNG" }),
+  ];
+  const workspacePng = page.getByRole("button", { name: "PNG workspace" });
+  for (const button of [...butterflyExports, workspacePng]) {
+    await expect(button).toBeEnabled();
+  }
   await page.getByLabel("q", { exact: true }).fill("47");
+  for (const button of [...butterflyExports, workspacePng]) {
+    expect(await button.isDisabled()).toBe(true);
+  }
   await expect(plot).toHaveAttribute("data-recomputing", "true", {
     timeout: 10_000,
   });
@@ -812,6 +824,9 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
   await expect(plot).toHaveAttribute("data-recomputing", "false", {
     timeout: 45_000,
   });
+  for (const button of butterflyExports) {
+    await expect(button).toBeEnabled();
+  }
 });
 
 test("falls back from the workspace to tabs below 1100px", async ({ page }) => {

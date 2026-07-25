@@ -474,6 +474,8 @@ def test_honeycomb_has_threefold_coordination_and_graphene_limits():
     "lattice,hoppings,period,expected",
     [
         ("square", [1.0], 1, True),
+        ("square", [1.0], 2, False),
+        ("square", [0.0], 1, False),
         ("square", [1.0, 0.2], 1, False),
         ("triangular", [1.0], 1, False),
         ("honeycomb", [1.0], 1, False),

@@ -19,13 +19,13 @@ Scientific correctness:
   gaps carry −2 and −1). The ambiguous, physically closed central gap at
   `r = q/2` is omitted rather than mislabeled. Even-q regression tests were
   added; previous coverage used odd q only.
-- Restrict fast Diophantine butterfly coloring to the nearest-neighbour
-  square model. Probes against the app's own Wilson-certified Fukui
-  invariants show the square-window coloring is wrong for triangular and
-  general Bravais models and for honeycomb doubling at even q (and extra
-  hopping shells break it even on square), so those models now report
-  butterfly topology as unavailable instead of displaying labels that
-  contradict the certified band topology.
+- Restrict fast Diophantine butterfly coloring to the non-zero,
+  nearest-neighbour, unit-period square model. Probes against the app's own
+  Wilson-certified Fukui invariants show the square-window coloring is wrong
+  for triangular and general Bravais models, honeycomb doubling at even q,
+  altered square periods, zero hopping, and extra square hopping shells, so
+  those models now report butterfly topology as unavailable instead of
+  displaying labels that contradict the certified band topology.
 - Reject non-coprime flux fractions at the Python adapter boundary, matching
   the upstream CLI, instead of silently returning a folded spectrum.
 - Close the high-symmetry band cut: the path now includes the final Γ sample
@@ -35,8 +35,9 @@ Data integrity:
 
 - NPZ import validates instead of fabricating: per-state and per-gap arrays
   with mismatched lengths are rejected (previously zero-padded into
-  physical-looking `C = 0` states), the declared flux denominator must match
-  the flux data, a renamed file's `q` hint is cross-checked against the data,
+  physical-looking `C = 0` states), the declared flux denominator must equal
+  the flux data's canonical denominator (not merely a multiple of it), a
+  renamed file's `q` hint is superseded by the data,
   decompressed archives are capped at 64 MB, numpy's native `<i8`/`|b1` and
   other small integer dtypes import correctly, invalid shape headers and
   duplicate array names are rejected, and truncated version-2 headers report
@@ -44,16 +45,18 @@ Data integrity:
 - Exported NPZ metadata now travels as a `metadata` uint8 array so
   `np.load` users can iterate every key; legacy `metadata.json` archives
   still import.
-- Export buttons pause while a view shows stale data for parameters still
-  being recomputed, so archives can no longer pair old arrays with new
-  parameter metadata and poison the cache on re-import.
+- Export buttons pause synchronously when live parameters no longer match the
+  visible cache, including during the scheduler debounce and quantum-geometry
+  replacement, so archives can no longer pair old arrays with new parameter
+  metadata and poison the cache on re-import.
 - PNG export inlines the computed SVG styles and rasterizes at the output
   scale: axes, tick labels, flux markers, and Brillouin-zone outlines no
   longer vanish from exported images. A failed PNG encode reports an error
   instead of silently downloading nothing. Lattice CSV now includes links,
   the unit cell, and both Brillouin-zone outlines.
-- The state inspector derives each point's flux fraction from the point
-  itself, so imported archives with foreign denominators display correctly.
+- The state inspector derives and coprime-reduces each point's flux fraction
+  from the point itself, so imported archives with foreign or multiple
+  denominators display correctly.
 
 Interface and pipeline:
 
@@ -80,7 +83,8 @@ Trust and delivery:
 
 - The shipped audit report computes its verdict, accessibility pills, and
   summary metrics from the recorded audit inputs instead of hardcoding a
-  passing result, and the contrast audit fails when its audited colors no
+  passing result, recognizes the recorded `pass-*` status variants without
+  false-failing, and the contrast audit fails when its audited colors no
   longer appear in the stylesheet.
 - CI now also boots the built production bundle at the deployed base path
   (`npm run test:e2e:dist`) so a base-path or asset regression cannot ship

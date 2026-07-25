@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { auditStatusPasses } from "./audit-verdict.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const auditRoot = join(root, "audit");
@@ -108,7 +109,7 @@ const escapeHtml = (value) =>
 
 const statusClass = (status) => {
   const value = String(status);
-  if (value.startsWith("pass")) return "pass";
+  if (auditStatusPasses(value)) return "pass";
   if (value.startsWith("warn")) return "warn";
   return "fail";
 };
@@ -120,15 +121,17 @@ const behavioralChecks = [
   ...browser.additional_checks,
 ];
 const accessibilityAllPass =
-  accessibility.status === "pass"
+  auditStatusPasses(accessibility.status)
   && accessibility.results.every((result) => result.pass);
 const behavioralAllPass =
-  browser.status === "pass"
+  auditStatusPasses(browser.status)
   && behavioralChecks.every((check) =>
-    String(check.status).startsWith("pass"),
+    auditStatusPasses(check.status),
   );
 const auditPassed =
-  physics.status === "pass" && accessibilityAllPass && behavioralAllPass;
+  auditStatusPasses(physics.status)
+  && accessibilityAllPass
+  && behavioralAllPass;
 const verdictLabel = auditPassed ? "PASS AFTER REMEDIATION" : "AUDIT FAILING";
 const verdictDetail = auditPassed
   ? `Honeycomb claim refuted; ${browser.review_verdict.confirmed_findings_fixed} confirmed issues fixed and regression-covered.`

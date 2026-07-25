@@ -151,16 +151,20 @@ def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
     """Return the CLI-compatible Diophantine Chern coloring when certified.
 
     The square-window Diophantine branch (``|t_r| <= q/2``) reproduces the
-    Fukui/Wilson-certified invariants only for the nearest-neighbour square
-    model.  Triangular, Bravais, extra-hopping, and doubled-honeycomb
-    colorings all contradict the certified band topology at accessible
-    fluxes, so they are reported as unavailable rather than mislabeled.
+    Fukui/Wilson-certified invariants only for the non-zero,
+    nearest-neighbour, unit-period square model.  Triangular, Bravais,
+    extra-hopping, altered-period, zero-hopping, and doubled-honeycomb
+    colorings all contradict or fail to define the certified band topology,
+    so they are reported as unavailable rather than mislabeled.
     """
 
     if (
         band_count == model.q
         and model.lat == "square"
         and len(model.t) == 1
+        and model.period == 1
+        and np.isfinite(model.t[0])
+        and float(model.t[0]) != 0.0
     ):
         base, _ = butterfly_functions.chern(model.p, model.q)
         return np.asarray(base, dtype=np.int32), True
