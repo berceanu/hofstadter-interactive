@@ -5,10 +5,7 @@ import { PlotAxes } from "./PlotAxes";
 import { flattenButterfly, extent } from "../utils/arrays";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore, type SelectedPoint } from "../state/store";
-import type {
-  ButterflyColorMode,
-  TopologicalPalette,
-} from "../compute/contracts";
+import type { ButterflyColorMode } from "../compute/contracts";
 
 interface AxisTransform {
   zoom: number;
@@ -26,33 +23,18 @@ interface PointData {
   yRange: [number, number];
 }
 
-export const topologicalPalettes: Record<TopologicalPalette, string[]> = {
-  avron: [
-    "#2b3cff", "#3154ff", "#3770ff", "#3d8cff", "#43a8ff",
-    "#49c4f2", "#50d8df", "#63ead3", "#83efcf", "#b2e9d5",
-    "#d7e0db",
-    "#eadcb8", "#f7d286", "#ffc257", "#ffa24f", "#ff8256",
-    "#ff665f", "#f6537a", "#e8499d", "#d94ab8", "#be4bd3",
-  ],
-  jet: [
-    "#000080", "#0000b3", "#0000e6", "#0019ff", "#004cff",
-    "#0080ff", "#00b3ff", "#00e6ff", "#19ffde", "#4cffab",
-    "#80ff80",
-    "#abff4c", "#deff19", "#ffe600", "#ffb300", "#ff8000",
-    "#ff4c00", "#ff1900", "#e60000", "#b30000", "#800000",
-  ],
-  "red-blue": [
-    "#08306b", "#0b3c7d", "#0f4b8f", "#175fa4", "#2878b8",
-    "#4292c6", "#6baed6", "#9ecae1", "#c6dbef", "#deebf7",
-    "#f7f7f7",
-    "#fee0d2", "#fcbba1", "#fc9272", "#fb6a4a", "#ef3b2c",
-    "#d92723", "#bd151a", "#9f0b13", "#85050f", "#67000d",
-  ],
-};
+const topologicalPalette = [
+  "#2b3cff", "#3154ff", "#3770ff", "#3d8cff", "#43a8ff",
+  "#49c4f2", "#50d8df", "#63ead3", "#83efcf", "#b2e9d5",
+  "#d7e0db",
+  "#eadcb8", "#f7d286", "#ffc257", "#ffa24f", "#ff8256",
+  "#ff665f", "#f6537a", "#e8499d", "#d94ab8", "#be4bd3",
+];
 
-function chernColor(chern: number, palette: TopologicalPalette) {
-  const colors = topologicalPalettes[palette];
-  return new THREE.Color(colors[Math.max(0, Math.min(20, chern + 10))]);
+function chernColor(chern: number) {
+  return new THREE.Color(
+    topologicalPalette[Math.max(0, Math.min(20, chern + 10))],
+  );
 }
 
 const resetAxis: AxisTransform = { zoom: 1, pan: 0 };
@@ -88,12 +70,10 @@ function nearestCoprimeNumerator(flux: number, q: number) {
 function PointCloud({
   data,
   colorMode,
-  palette,
   opacityMultiplier = 1,
 }: {
   data: PointData;
   colorMode: "spectral" | "chern";
-  palette: TopologicalPalette;
   opacityMultiplier?: number;
 }) {
   const geometry = useMemo(() => {
@@ -117,7 +97,7 @@ function PointCloud({
         ((data.y[index] - yMin) / energyRange) * 2 - 1;
       const color =
         colorMode === "chern"
-          ? chernColor(data.chern[index], palette)
+          ? chernColor(data.chern[index])
           : mixed.copy(cool).lerp(warm, (data.y[index] - yMin) / energyRange);
       colors[index * 3] = color.r;
       colors[index * 3 + 1] = color.g;
@@ -137,7 +117,7 @@ function PointCloud({
     next.setAttribute("pointOpacity", new THREE.BufferAttribute(pointOpacities, 1));
     next.computeBoundingSphere();
     return next;
-  }, [colorMode, data, opacityMultiplier, palette]);
+  }, [colorMode, data, opacityMultiplier]);
 
   const material = useMemo(
     () =>
@@ -182,7 +162,6 @@ function GapSegments({
   energy,
   gap,
   chern,
-  palette,
   yRange,
   yZoom,
   onVisibleCount,
@@ -191,7 +170,6 @@ function GapSegments({
   energy: Float64Array;
   gap: Float64Array;
   chern: Int32Array;
-  palette: TopologicalPalette;
   yRange: [number, number];
   yZoom: number;
   onVisibleCount: (count: number) => void;
@@ -217,7 +195,7 @@ function GapSegments({
       const x = flux[index] * 2 - 1;
       const lower = ((energy[index] - width / 2 - yMin) / span) * 2 - 1;
       const upper = ((energy[index] + width / 2 - yMin) / span) * 2 - 1;
-      const color = chernColor(chern[index], palette);
+      const color = chernColor(chern[index]);
       const offset = cursor * 6;
       positions.set([x, lower, 0, x, upper, 0], offset);
       colors.set(
@@ -231,7 +209,7 @@ function GapSegments({
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geometry.computeBoundingSphere();
     return { geometry, visible };
-  }, [chern, energy, flux, gap, palette, size.height, yRange, yZoom]);
+  }, [chern, energy, flux, gap, size.height, yRange, yZoom]);
 
   useEffect(() => {
     onVisibleCount(segmentGeometry.visible);
@@ -278,13 +256,11 @@ function PlotLegend({
   energyRange,
   topologyAvailable,
   wannier,
-  palette,
 }: {
   colorMode: ButterflyColorMode;
   energyRange: [number, number];
   topologyAvailable: boolean;
   wannier: boolean;
-  palette: TopologicalPalette;
 }) {
   const showChern = colorMode !== "spectral" && topologyAvailable;
   const hallScale = wannier || colorMode === "gaps";
@@ -310,7 +286,7 @@ function PlotLegend({
       <i
         style={{
           background: showChern
-            ? `linear-gradient(90deg, ${topologicalPalettes[palette].join(",")})`
+            ? `linear-gradient(90deg, ${topologicalPalette.join(",")})`
             : "linear-gradient(90deg, #5cf2ce, #ffd166)",
         }}
       />
@@ -348,9 +324,6 @@ export function ButterflyPlot({
 }) {
   const { butterfly, butterflyStale } = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
-  const topologicalPalette = useAppStore(
-    (state) => state.topologicalPalette,
-  );
   const parameters = useAppStore((state) => state.parameters);
   const currentFlux = parameters.p / parameters.q;
   const setParameter = useAppStore((state) => state.setParameter);
@@ -581,7 +554,6 @@ export function ButterflyPlot({
         compact ? "compact" : "",
         butterflyStale ? "is-stale" : "",
       ].filter(Boolean).join(" ")}
-      data-plot-export
       data-flux-plot={wannier ? "wannier" : "butterfly"}
       data-recomputing={butterflyStale}
       data-current-numerator={parameters.p}
@@ -708,7 +680,6 @@ export function ButterflyPlot({
                 energy={arrays.gapEnergy}
                 gap={arrays.gap}
                 chern={arrays.gapChern}
-                palette={topologicalPalette}
                 yRange={energyRange}
                 yZoom={yTransform.zoom}
                 onVisibleCount={setVisibleGapSegments}
@@ -717,7 +688,6 @@ export function ButterflyPlot({
                 <PointCloud
                   data={data}
                   colorMode="spectral"
-                  palette={topologicalPalette}
                   opacityMultiplier={0.18}
                 />
               )}
@@ -726,7 +696,6 @@ export function ButterflyPlot({
             <PointCloud
               data={data}
               colorMode={effectiveColorMode === "chern" ? "chern" : "spectral"}
-              palette={topologicalPalette}
             />
           )}
         </Canvas>
@@ -753,7 +722,6 @@ export function ButterflyPlot({
         energyRange={energyRange}
         topologyAvailable={data.topologyAvailable}
         wannier={wannier}
-        palette={topologicalPalette}
       />
       {gapMode && (
         <button

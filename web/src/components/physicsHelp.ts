@@ -28,11 +28,6 @@ export const parameterHelp = {
     body:
       "t₁, t₂, … are the tight-binding amplitudes for first-, second-, and higher-neighbor shells. They multiply the Peierls-phased hopping terms in ascending neighbor order.",
   },
-  customBasis: {
-    label: "Custom basis sites",
-    body:
-      "Each x,y pair gives a site position x·a₁ + y·a₂ inside the primitive cell. HofstadterTools’ generic neighbor finder connects these sites using the supplied hopping shells.",
-  },
   anisotropy: {
     label: "Bravais anisotropy α",
     body:

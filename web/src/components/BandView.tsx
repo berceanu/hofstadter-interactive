@@ -1168,7 +1168,6 @@ function BandCut({
       viewBox="0 0 940 500"
       role="img"
       aria-label="Band energies along the high-symmetry path with density of states"
-      data-export-layer
       data-band-hit-radius="18"
       data-selected-path-index={markerIndex}
       data-scrubbing={scrubbing}
@@ -1563,7 +1562,6 @@ function WilsonPlot({
       viewBox="0 0 940 252"
       role="group"
       aria-label="Wilson eigenphase versus normalized k2"
-      data-export-layer
       data-wilson-points={samples}
       data-topology-status={
         topologyTrusted ? "resolved" : resolving ? "resolving" : "unavailable"
@@ -1910,7 +1908,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           quantum geometry · 2 offset grids
         </div>
       )}
-      <section className="band-panel band-cut-panel" data-plot-export>
+      <section className="band-panel band-cut-panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">SYMMETRY CUT</span>
@@ -2046,7 +2044,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           resolving={topologyRefinementPending}
         />
       </section>
-      <section className="band-panel surface-panel" data-plot-export>
+      <section className="band-panel surface-panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">ROTATABLE SURFACE</span>

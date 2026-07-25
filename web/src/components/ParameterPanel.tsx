@@ -18,7 +18,6 @@ const lattices: { value: LatticeKind; label: string }[] = [
   { value: "honeycomb", label: "Honeycomb" },
   { value: "kagome", label: "Kagome" },
   { value: "bravais", label: "General Bravais" },
-  { value: "custom", label: "Custom basis" },
 ];
 
 function FieldLabel({
@@ -49,9 +48,6 @@ export function ParameterPanel() {
     q: String(parameters.q),
   });
   const [editingFlux, setEditingFlux] = useState(false);
-  const [customBasis, setCustomBasis] = useState(
-    parameters.customBasis.map((point) => point.join(", ")).join("\n"),
-  );
 
   useEffect(() => {
     setHoppings(parameters.hoppings.join(", "));
@@ -65,11 +61,6 @@ export function ParameterPanel() {
     });
   }, [editingFlux, parameters.p, parameters.q]);
 
-  useEffect(() => {
-    setCustomBasis(
-      parameters.customBasis.map((point) => point.join(", ")).join("\n"),
-    );
-  }, [parameters.customBasis]);
 
   const commitFluxDraft = () => {
     const parsedQ = Number(fluxDraft.q);
@@ -204,9 +195,7 @@ export function ParameterPanel() {
           htmlFor="parameter-hoppings"
           help={parameterHelp.hoppings}
         >
-          {parameters.lattice === "custom"
-            ? "Neighbor-shell hoppings t₁, t₂, …"
-            : "Hoppings t₁, t₂, …"}
+          Hoppings t₁, t₂, …
         </FieldLabel>
         <input
           id="parameter-hoppings"
@@ -234,48 +223,6 @@ export function ParameterPanel() {
           {MAX_HOPPING_MAGNITUDE.toLocaleString()}
         </small>
       </div>
-
-      {parameters.lattice === "custom" && (
-        <div className="field custom-basis-field">
-          <FieldLabel
-            htmlFor="parameter-custom-basis"
-            help={parameterHelp.customBasis}
-          >
-            Basis sites (fractional a₁, a₂)
-          </FieldLabel>
-          <textarea
-            id="parameter-custom-basis"
-            aria-label="Custom basis sites"
-            rows={4}
-            value={customBasis}
-            onChange={(event) => setCustomBasis(event.target.value)}
-            onBlur={() => {
-              const parsed = customBasis
-                .split(/\n|;/)
-                .map((entry) => entry.split(",").map(Number))
-                .filter(
-                  (entry): entry is [number, number] =>
-                    entry.length === 2
-                    && Number.isFinite(entry[0])
-                    && Number.isFinite(entry[1]),
-                )
-                .slice(0, 4);
-              if (parsed.length) {
-                setParameter("customBasis", parsed);
-              } else {
-                setCustomBasis(
-                  parameters.customBasis
-                    .map((point) => point.join(", "))
-                    .join("\n"),
-                );
-              }
-            }}
-          />
-          <small>
-            one x,y pair per line · up to 4 sites · generic upstream solver
-          </small>
-        </div>
-      )}
 
       <div className="split-fields">
         <div className="field compact">
@@ -333,7 +280,6 @@ export function ParameterPanel() {
             value={parameters.theta[0]}
             disabled={
               parameters.lattice !== "bravais"
-              && parameters.lattice !== "custom"
             }
             onChange={(event) =>
               setParameter("theta", [
@@ -358,7 +304,6 @@ export function ParameterPanel() {
             value={parameters.theta[1]}
             disabled={
               parameters.lattice !== "bravais"
-              && parameters.lattice !== "custom"
             }
             onChange={(event) =>
               setParameter("theta", [

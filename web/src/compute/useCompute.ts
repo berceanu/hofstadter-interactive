@@ -8,7 +8,6 @@ import type {
 import { PyodideWorkerEngine } from "./workerEngine";
 import { resultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
-import { writeUrlState } from "../state/urlState";
 import {
   baseTopologyGridSufficient,
   bandComputationKey,
@@ -699,11 +698,6 @@ export function useCompute() {
   const selectedBand = useAppStore((state) => state.selectedBand);
   const selectedMomentum = useAppStore((state) => state.selectedMomentum);
   const bandCutZoom = useAppStore((state) => state.bandCutZoom);
-  const colorMode = useAppStore((state) => state.colorMode);
-  const topologicalPalette = useAppStore(
-    (state) => state.topologicalPalette,
-  );
-  const fluxTransform = useAppStore((state) => state.fluxTransform);
   const geometryRequested =
     surfaceMetric === "gxx"
     || surfaceMetric === "gxy"
@@ -734,31 +728,6 @@ export function useCompute() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    writeUrlState(parameters, focus, view, {
-      colorMode,
-      topologicalPalette,
-      surfaceMetric,
-      geometryColumnsExpanded,
-      bandCutZoom,
-      selectedBand,
-      selectedMomentum,
-      fluxTransform,
-    });
-  }, [
-    bandCutZoom,
-    colorMode,
-    fluxTransform,
-    focus,
-    geometryColumnsExpanded,
-    parameters,
-    selectedBand,
-    selectedMomentum,
-    surfaceMetric,
-    topologicalPalette,
-    view,
-  ]);
 
   useEffect(() => {
     if (!runtimeReady) return;

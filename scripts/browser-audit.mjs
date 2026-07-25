@@ -105,7 +105,7 @@ const result = {
   status: passed ? "pass" : "fail",
   command,
   review_verdict: {
-    confirmed_findings_fixed: 12,
+    confirmed_findings_fixed: 8,
     summary:
       "The browser matrix is generated from the current Playwright run; static screenshots are retained only as historical visual context.",
   },
@@ -143,33 +143,9 @@ const result = {
     },
     {
       severity: "medium",
-      finding: "Lattice CSV links used the wrong record stride.",
-      resolution:
-        "Link exports now use all six fields: endpoints, neighbor shell, and amplitude.",
-    },
-    {
-      severity: "medium",
-      finding: "NPZ import accepted incomplete and non-finite physical data.",
-      resolution:
-        "The importer requires versioned state arrays and an exact topology flag, validates finite/order/range/gap consistency, and checks file size before reading.",
-    },
-    {
-      severity: "medium",
-      finding: "A cancelled geometry request could leave band exports disabled.",
-      resolution:
-        "Geometry expectations clear when no longer requested, and export gating only waits for currently requested geometry.",
-    },
-    {
-      severity: "medium",
       finding: "All-zero generic hopping and extreme amplitudes reached NumPy failures.",
       resolution:
         "Browser and Python boundaries bound amplitudes and return a clear domain error for undefined all-zero generic models.",
-    },
-    {
-      severity: "medium",
-      finding: "Shared URLs omitted the active analysis state.",
-      resolution:
-        "Color, palette, surface metric, geometry table, band, cut zoom, linked momentum, and butterfly transform now round-trip.",
     },
     {
       severity: "low",

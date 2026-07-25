@@ -31,9 +31,7 @@ export function estimatedBandCount(parameters: ScientificParameters) {
       ? 2
       : parameters.lattice === "kagome"
         ? 3
-        : parameters.lattice === "custom"
-          ? Math.max(1, parameters.customBasis.length)
-          : 1;
+        : 1;
   return Math.max(1, parameters.q * multiplier);
 }
 
@@ -57,9 +55,6 @@ function parameterKey(
     hoppings: parameters.hoppings,
     alpha: parameters.alpha,
     theta: parameters.theta,
-    ...(parameters.lattice === "custom"
-      ? { customBasis: parameters.customBasis }
-      : {}),
   };
   if (kind === "lattice") return JSON.stringify(common);
   const sweep = { ...common, period: parameters.period };

@@ -29,84 +29,6 @@ _WILSON_PHASE_STEP_LIMIT = 0.95 * np.pi
 _MAX_HOPPING_MAGNITUDE = 1_000_000.0
 
 
-def _normalized_custom_basis(parameters: dict[str, Any]) -> np.ndarray:
-    """Return a small, unique fractional basis for the custom-lattice path."""
-
-    raw_basis = parameters.get(
-        "customBasis",
-        parameters.get("custom_basis", [[0.0, 0.0], [0.5, 0.0], [0.0, 0.5]]),
-    )
-    basis: list[tuple[float, float]] = []
-    for raw_point in list(raw_basis)[:4]:
-        if not isinstance(raw_point, (list, tuple)) or len(raw_point) != 2:
-            continue
-        x, y = float(raw_point[0]), float(raw_point[1])
-        if not np.isfinite(x) or not np.isfinite(y):
-            continue
-        point = (
-            float(np.clip(x, 0.0, 0.999999)),
-            float(np.clip(y, 0.0, 0.999999)),
-        )
-        if not any(
-            abs(point[0] - existing[0]) < 1e-8
-            and abs(point[1] - existing[1]) < 1e-8
-            for existing in basis
-        ):
-            basis.append(point)
-    if not basis:
-        basis = [(0.0, 0.0), (0.5, 0.0), (0.0, 0.5)]
-    return np.asarray(basis, dtype=np.float64)
-
-
-class _CustomHofstadter(Hofstadter):
-    """Adapter-only custom unit cell using the upstream generic Hamiltonian."""
-
-    def __init__(self, *args: Any, custom_basis: np.ndarray, **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        self.custom_basis = np.asarray(custom_basis, dtype=np.float64)
-
-    def unit_cell(self):
-        a1 = self.a0 * np.array([1.0, 0.0])
-        a2 = self.a0 * self.alpha * np.array(
-            [np.cos(self.theta), np.sin(self.theta)]
-        )
-        lattice_vectors = np.vstack((a1, a2))
-        basis = np.asarray(
-            [
-                point[0] * a1 + point[1] * a2
-                for point in self.custom_basis
-            ],
-            dtype=np.float64,
-        )
-        magnetic_vectors = np.vstack((a1, self.q * a2))
-        reciprocal = model_functions.reciprocal_vectors(magnetic_vectors)
-        gamma = np.array([0.0, 0.0])
-        middle = np.array([0.5, 0.5])
-        theta_gcd = gcd(self.theta0, self.theta1)
-        reduced_denominator = self.theta1 // theta_gcd
-        if reduced_denominator == 3:
-            symmetry_points = [
-                ("$\\Gamma$", gamma),
-                ("$K$", np.array([2 / 3, 1 / 3])),
-                ("$M$", middle),
-                ("$K'$", np.array([1 / 3, 2 / 3])),
-            ]
-        else:
-            symmetry_points = [
-                ("$\\Gamma$", gamma),
-                ("$X$", np.array([0.5, 0.0])),
-                ("$M$", middle),
-                ("$Y$", np.array([0.0, 0.5])),
-            ]
-        return (
-            len(basis) * self.q,
-            lattice_vectors,
-            basis,
-            reciprocal,
-            symmetry_points,
-        )
-
-
 def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
     theta = parameters.get("theta", [1, 3])
     return (
@@ -118,9 +40,6 @@ def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
         float(parameters.get("alpha", 1.0)),
         (int(theta[0]), int(theta[1])),
         int(parameters.get("period", 1)),
-        tuple(_normalized_custom_basis(parameters).ravel())
-        if str(parameters.get("lattice", "square")) == "custom"
-        else (),
         int(samples),
     )
 
@@ -161,13 +80,7 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
             "General-lattice Hamiltonians require at least one non-zero "
             "hopping amplitude."
         )
-    model_type = _CustomHofstadter if lattice == "custom" else Hofstadter
-    custom_arguments = (
-        {"custom_basis": _normalized_custom_basis(parameters)}
-        if lattice == "custom"
-        else {}
-    )
-    return model_type(
+    return Hofstadter(
         numerator,
         denominator,
         a0=float(parameters.get("a", 1.0)),
@@ -176,7 +89,6 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
         alpha=float(parameters.get("alpha", 1.0)),
         theta=(int(theta[0]), int(theta[1])),
         period=int(parameters.get("period", 1)),
-        **custom_arguments,
     )
 
 

@@ -165,22 +165,6 @@ button {
   gap: 12px;
 }
 
-.npz-load-button {
-  border: 1px solid #2d4658;
-  border-radius: 7px;
-  background: #0c1b29;
-  color: var(--mint);
-  padding: 7px 9px;
-  cursor: pointer;
-  font: 500 8px "DM Mono", monospace;
-  letter-spacing: 0.08em;
-}
-
-.npz-load-button:hover {
-  border-color: #4d9c8c;
-  background: #122839;
-}
-
 .visually-hidden {
   position: absolute !important;
   width: 1px !important;
@@ -191,73 +175,6 @@ button {
   clip: rect(0, 0, 0, 0) !important;
   white-space: nowrap !important;
   border: 0 !important;
-}
-
-.npz-drop-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(4, 12, 20, 0.8);
-  backdrop-filter: blur(8px);
-  pointer-events: none;
-}
-
-.npz-drop-overlay div {
-  min-width: min(420px, calc(100vw - 40px));
-  padding: 30px;
-  border: 1px dashed var(--mint);
-  border-radius: 16px;
-  background: #0b1b28;
-  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.45);
-  text-align: center;
-}
-
-.npz-drop-overlay strong,
-.npz-drop-overlay span {
-  display: block;
-}
-
-.npz-drop-overlay strong {
-  color: var(--mint);
-  font: 600 14px "DM Mono", monospace;
-  letter-spacing: 0.08em;
-}
-
-.npz-drop-overlay span {
-  margin-top: 10px;
-  color: #9db0bb;
-  font: 9px "DM Mono", monospace;
-}
-
-.npz-import-toast {
-  position: fixed;
-  z-index: 90;
-  top: 88px;
-  right: 18px;
-  max-width: min(460px, calc(100vw - 36px));
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(92, 242, 206, 0.42);
-  border-radius: 9px;
-  background: rgba(9, 24, 35, 0.97);
-  color: #dce8e5;
-  padding: 10px 12px;
-  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.34);
-  font: 9px/1.5 "DM Mono", monospace;
-}
-
-.npz-import-toast.error {
-  border-color: rgba(255, 102, 95, 0.55);
-}
-
-.npz-import-toast button {
-  border: 0;
-  background: transparent;
-  color: #94a8b4;
-  cursor: pointer;
 }
 
 .workspace {
@@ -573,28 +490,6 @@ button {
   gap: 7px;
 }
 
-.palette-select {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #708697;
-  font: 8px "DM Mono", monospace;
-}
-
-.palette-select select {
-  height: 31px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: #0a1622;
-  color: #b7c4ca;
-  padding: 0 7px;
-  font: 8px "DM Mono", monospace;
-}
-
-.palette-select select:disabled {
-  opacity: 0.55;
-}
-
 .band-select {
   display: flex;
   align-items: center;
@@ -860,13 +755,12 @@ button {
 .bottom-deck {
   min-height: 84px;
   display: grid;
-  grid-template-columns: minmax(260px, 1.25fr) minmax(270px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 12px;
   padding-top: 12px;
 }
 
 .selection-card,
-.export-deck,
 .result-stats {
   min-width: 0;
   border: 1px solid #1d3040;
@@ -915,44 +809,6 @@ button {
   margin: 0;
   color: #d9e5df;
   font: 10px "DM Mono", monospace;
-}
-
-.export-deck > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 9px;
-}
-
-.export-deck button {
-  border: 1px solid #294054;
-  border-radius: 5px;
-  background: #102130;
-  color: #aebcc5;
-  padding: 6px 9px;
-  font: 8px "DM Mono", monospace;
-  cursor: pointer;
-}
-
-.export-deck button:hover {
-  border-color: var(--mint);
-  color: var(--mint);
-}
-
-.transparent-art-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: #8296a5;
-  font: 8px "DM Mono", monospace;
-  cursor: pointer;
-}
-
-.transparent-art-toggle input {
-  width: 12px;
-  height: 12px;
-  margin: 0;
-  accent-color: var(--mint);
 }
 
 .result-stats {
@@ -1629,15 +1485,6 @@ button {
   margin: 0;
 }
 
-.workspace-share-tools,
-.panel-export-tools {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.workspace-share-tools button,
-.panel-export-tools button,
 .maximize-button {
   border: 1px solid #294054;
   border-radius: 5px;
@@ -1648,8 +1495,6 @@ button {
   cursor: pointer;
 }
 
-.workspace-share-tools button:hover,
-.panel-export-tools button:hover,
 .maximize-button:hover {
   border-color: var(--mint);
   color: var(--mint);
@@ -1754,13 +1599,6 @@ button {
 .workspace-panel-body > .bands-layout {
   border-radius: 9px;
   box-shadow: none;
-}
-
-.panel-export-tools {
-  justify-content: flex-end;
-  min-height: 32px;
-  padding: 4px 8px 7px;
-  border-top: 1px solid #172a3a;
 }
 
 .spectrum-shell.compact {

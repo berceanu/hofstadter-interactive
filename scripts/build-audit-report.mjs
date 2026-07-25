@@ -350,7 +350,7 @@ const html = `<!doctype html>
     <div>
       <span class="eyebrow">Generated audit · ${escapeHtml(generatedDate)}</span>
       <h1>Harper / Hofstadter Interactive</h1>
-      <p>UI behavior, numerical physics, topology, geometry, accessibility, responsive layout, exports, cancellation, and performance were exercised against the actual browser build—not inferred from screenshots alone.</p>
+      <p>UI behavior, numerical physics, topology, geometry, accessibility, responsive layout, cancellation, and performance were exercised against the actual browser build—not inferred from screenshots alone.</p>
     </div>
     <div class="verdict${auditPassed ? "" : " failing"}">
       <strong>${escapeHtml(verdictLabel)}</strong>
@@ -372,7 +372,7 @@ const html = `<!doctype html>
     <div class="two-col">
       <div class="panel">
         <h3>Driven browser coverage</h3>
-        <p>Changed lattice, p/q, hopping, anisotropy, angle, period, and sample controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; cancelled q=97 work; copied a reproducible URL; and downloaded CSV, NPZ, and PNG artifacts.</p>
+        <p>Changed lattice, p/q, hopping, anisotropy, angle, period, and grouping controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; and cancelled q=97 work.</p>
       </div>
       <div class="panel">
         <h3>Numerical coverage</h3>

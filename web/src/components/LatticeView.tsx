@@ -106,7 +106,6 @@ export function LatticeView({ compact = false }: { compact?: boolean }) {
         compact ? "compact" : "",
         latticeStale ? "is-stale" : "",
       ].filter(Boolean).join(" ")}
-      data-plot-export
       data-recomputing={latticeStale}
     >
       <svg
@@ -114,7 +113,6 @@ export function LatticeView({ compact = false }: { compact?: boolean }) {
         viewBox="0 0 1000 550"
         role="img"
         aria-label={`${latticeName} real-space lattice with ordinary and magnetic Brillouin zones`}
-        data-export-layer
       >
         <defs>
           <pattern id="fine-grid" width="22" height="22" patternUnits="userSpaceOnUse">

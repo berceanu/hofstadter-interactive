@@ -3,13 +3,11 @@ export type LatticeKind =
   | "triangular"
   | "honeycomb"
   | "kagome"
-  | "bravais"
-  | "custom";
+  | "bravais";
 
 export type ViewKind = "butterfly" | "wannier" | "lattice" | "bands";
 export type FocusKind = "workspace" | ViewKind;
 export type ButterflyColorMode = "spectral" | "chern" | "gaps";
-export type TopologicalPalette = "avron" | "jet" | "red-blue";
 export type SurfaceMetric = "energy" | "berry" | "gxx" | "gxy";
 
 export interface ScientificParameters {
@@ -23,7 +21,6 @@ export interface ScientificParameters {
   period: number;
   samples: number;
   bgt: number;
-  customBasis: [number, number][];
 }
 
 export interface ButterflyChunk {

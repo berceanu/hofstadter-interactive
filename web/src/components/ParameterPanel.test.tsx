@@ -72,22 +72,4 @@ describe("ParameterPanel", () => {
     expect(pInput).toHaveValue(6);
     expect(qInput).toHaveValue(11);
   });
-
-  it("shows the custom basis editor only for the custom lattice", async () => {
-    render(<ParameterPanel />);
-    expect(screen.queryByLabelText("Custom basis sites")).not.toBeInTheDocument();
-    await userEvent.selectOptions(
-      screen.getByLabelText("Lattice geometry"),
-      "custom",
-    );
-    const editor = screen.getByLabelText("Custom basis sites");
-    expect(editor).toBeInTheDocument();
-    await userEvent.clear(editor);
-    await userEvent.type(editor, "0, 0\n0.5, 0.25");
-    await userEvent.tab();
-    expect(useAppStore.getState().parameters.customBasis).toEqual([
-      [0, 0],
-      [0.5, 0.25],
-    ]);
-  });
 });

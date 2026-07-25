@@ -501,51 +501,6 @@ def test_butterfly_reports_diophantine_topology_availability(
     assert result["topology_available"] is expected
 
 
-def test_custom_basis_uses_upstream_generic_hamiltonian_path():
-    parameters = {
-        "lattice": "custom",
-        "hoppings": [1.0],
-        "period": 1,
-        "theta": [1, 3],
-        "alpha": 1.0,
-        "p": 1,
-        "q": 3,
-        "samples": 7,
-        "customBasis": [[0.0, 0.0], [0.5, 0.0], [0.0, 0.5]],
-    }
-    result = compute_butterfly_batch(parameters, 1, 2)
-    reference = Hofstadter(
-        1,
-        3,
-        t=[1.0],
-        lat="custom",
-        alpha=1.0,
-        theta=(1, 3),
-        period=1,
-    )
-    reference_energy = np.sort(
-        np.linalg.eigvalsh(reference.hamiltonian(np.array([0.0, 0.0])))
-    )
-    assert np.allclose(
-        result["energy"],
-        reference_energy,
-        rtol=1e-9,
-        atol=1e-11,
-    )
-    assert result["topology_available"] is False
-
-    two_site = {
-        **parameters,
-        "customBasis": [[0.0, 0.0], [0.5, 0.25]],
-    }
-    lattice = compute_lattice(two_site)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        bands = compute_bands(two_site)
-    assert lattice["basis_count"] == 2
-    assert bands["bands"] == 2 * parameters["q"]
-    assert np.isfinite(bands["energy"]).all()
-
-
 @pytest.mark.parametrize("lattice,hoppings,period,theta", CASES)
 def test_brillouin_zone_is_the_reciprocal_wigner_seitz_cell(
     lattice, hoppings, period, theta
@@ -701,11 +656,6 @@ def test_non_coprime_flux_is_rejected():
             "theta": [67, 180],
         },
         {
-            "lattice": "custom",
-            "hoppings": [0.0],
-            "theta": [1, 3],
-        },
-        {
             "lattice": "square",
             "hoppings": [0.0, 0.0],
             "theta": [1, 2],
@@ -745,20 +695,14 @@ def test_extreme_hopping_is_rejected_before_linalg():
 
 def test_oversized_browser_workloads_are_rejected_before_allocation():
     parameters = {
-        "lattice": "custom",
+        "lattice": "kagome",
         "hoppings": [1.0],
-        "period": 1,
+        "period": 8,
         "theta": [1, 3],
         "alpha": 1.0,
         "p": 1,
         "q": 199,
         "samples": 7,
-        "customBasis": [
-            [0.0, 0.0],
-            [0.5, 0.0],
-            [0.0, 0.5],
-            [0.5, 0.5],
-        ],
     }
     with pytest.raises(ValueError, match="flux sweep exceeds"):
         compute_butterfly_batch(parameters, 1, 2)

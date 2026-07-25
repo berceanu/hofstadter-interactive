@@ -50,21 +50,6 @@ describe("scientific parameter invariants", () => {
     expect(normalized.theta).toEqual([1, 2]);
   });
 
-  it("normalizes hydrated URL state before computation", () => {
-    useAppStore.getState().hydrate({
-      lattice: "bravais",
-      p: 99,
-      q: 3,
-      theta: [90, 90],
-    });
-    expect(useAppStore.getState().parameters).toMatchObject({
-      lattice: "bravais",
-      p: 2,
-      q: 3,
-      theta: [89, 90],
-    });
-  });
-
   it("forces named lattices to their canonical angle", () => {
     const honeycomb = normalizeParameters({
       ...defaultParameters,
@@ -97,38 +82,12 @@ describe("scientific parameter invariants", () => {
     expect(normalizeParameters({ ...defaultParameters, bgt: -1 }).bgt).toBe(0);
   });
 
-  it("bounds, deduplicates, and preserves a custom fractional basis", () => {
-    const normalized = normalizeParameters({
-      ...defaultParameters,
-      lattice: "custom",
-      customBasis: [
-        [0, 0],
-        [0.5, 0.25],
-        [0.5, 0.25],
-        [3, -1],
-      ],
-    });
-    expect(normalized.customBasis).toEqual([
-      [0, 0],
-      [0.5, 0.25],
-      [0.999999, 0],
-    ]);
-    expect(normalized.theta).toEqual([1, 2]);
-  });
-
   it("bounds hopping amplitudes before they reach the eigensolver", () => {
     const normalized = normalizeParameters({
       ...defaultParameters,
       hoppings: [1e308, -1e308, Number.NaN],
     });
     expect(normalized.hoppings).toEqual([1_000_000, -1_000_000]);
-  });
-
-  it("switches among upstream-compatible topology palettes", () => {
-    useAppStore.getState().setTopologicalPalette("red-blue");
-    expect(useAppStore.getState().topologicalPalette).toBe("red-blue");
-    useAppStore.getState().setTopologicalPalette("jet");
-    expect(useAppStore.getState().topologicalPalette).toBe("jet");
   });
 
   it("chooses the preview grid from the Hamiltonian size", () => {
@@ -161,26 +120,4 @@ describe("scientific parameter invariants", () => {
     expect(useAppStore.getState().computeCounters.topology).toBe(0);
   });
 
-  it("hydrates bounded shareable analysis state", () => {
-    useAppStore.getState().hydrate({
-      colorMode: "chern",
-      topologicalPalette: "jet",
-      surfaceMetric: "gxx",
-      geometryColumnsExpanded: true,
-      bandCutZoom: 12,
-      selectedBand: 7,
-      selectedMomentum: { source: "wilson", fraction: 0.6 },
-      fluxTransform: { zoom: 5, pan: -0.2 },
-    });
-    expect(useAppStore.getState()).toMatchObject({
-      colorMode: "chern",
-      topologicalPalette: "jet",
-      surfaceMetric: "gxx",
-      geometryColumnsExpanded: true,
-      bandCutZoom: 12,
-      selectedBand: 7,
-      selectedMomentum: { source: "wilson", fraction: 0.6 },
-      fluxTransform: { zoom: 5, pan: -0.2 },
-    });
-  });
 });

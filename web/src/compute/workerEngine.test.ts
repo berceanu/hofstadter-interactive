@@ -18,11 +18,6 @@ const parameters: ScientificParameters = {
   period: 1,
   samples: 7,
   bgt: 0.01,
-  customBasis: [
-    [0, 0],
-    [0.5, 0],
-    [0, 0.5],
-  ],
 };
 
 function latticeResult(requestId: string): LatticeResult {

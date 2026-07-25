@@ -5,7 +5,6 @@ import type {
   RuntimeProgress,
   ScientificParameters,
   SurfaceMetric,
-  TopologicalPalette,
   FocusKind,
   ViewKind,
 } from "../compute/contracts";
@@ -44,7 +43,6 @@ interface AppState {
     dispersion: number;
   };
   colorMode: ButterflyColorMode;
-  topologicalPalette: TopologicalPalette;
   surfaceMetric: SurfaceMetric;
   geometryColumnsExpanded: boolean;
   bandCutZoom: number;
@@ -74,7 +72,6 @@ interface AppState {
       | "dispersion",
   ) => void;
   setColorMode: (mode: ButterflyColorMode) => void;
-  setTopologicalPalette: (palette: TopologicalPalette) => void;
   setSurfaceMetric: (metric: SurfaceMetric) => void;
   setGeometryColumnsExpanded: (expanded: boolean) => void;
   setBandCutZoom: (zoom: number) => void;
@@ -84,20 +81,6 @@ interface AppState {
   setProgress: (progress: RuntimeProgress) => void;
   setActiveRequest: (requestId?: string) => void;
   setRuntimeReady: (ready: boolean) => void;
-  hydrate: (
-    parameters: Partial<ScientificParameters> & {
-      view?: ViewKind;
-      focus?: FocusKind;
-      colorMode?: ButterflyColorMode;
-      topologicalPalette?: TopologicalPalette;
-      surfaceMetric?: SurfaceMetric;
-      geometryColumnsExpanded?: boolean;
-      bandCutZoom?: number;
-      selectedBand?: number;
-      selectedMomentum?: SelectedMomentum;
-      fluxTransform?: { zoom: number; pan: number };
-    },
-  ) => void;
 }
 
 export const defaultParameters: ScientificParameters = {
@@ -111,11 +94,6 @@ export const defaultParameters: ScientificParameters = {
   period: 1,
   samples: 17,
   bgt: 0.01,
-  customBasis: [
-    [0, 0],
-    [0.5, 0],
-    [0, 0.5],
-  ],
 };
 
 export const MAX_HOPPING_MAGNITUDE = 1_000_000;
@@ -180,46 +158,16 @@ export function canonicalTheta(
   ];
 }
 
-function normalizeCustomBasis(
-  basis: [number, number][],
-): [number, number][] {
-  const normalized: [number, number][] = [];
-  for (const point of basis.slice(0, 4)) {
-    const x = Number(point?.[0]);
-    const y = Number(point?.[1]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    const candidate: [number, number] = [
-      Math.max(0, Math.min(0.999999, x)),
-      Math.max(0, Math.min(0.999999, y)),
-    ];
-    if (
-      !normalized.some(
-        ([existingX, existingY]) =>
-          Math.abs(existingX - candidate[0]) < 1e-8
-          && Math.abs(existingY - candidate[1]) < 1e-8,
-      )
-    ) {
-      normalized.push(candidate);
-    }
-  }
-  return normalized.length
-    ? normalized
-    : defaultParameters.customBasis.map((point) => [...point]);
-}
-
 export function automaticMomentumSamples({
   lattice,
   q,
-  customBasis,
-}: Pick<ScientificParameters, "lattice" | "q" | "customBasis">) {
+}: Pick<ScientificParameters, "lattice" | "q">) {
   const multiplier =
     lattice === "honeycomb"
       ? 2
       : lattice === "kagome"
         ? 3
-        : lattice === "custom"
-          ? Math.max(1, customBasis.length)
-          : 1;
+        : 1;
   const bandCount = Math.max(1, q * multiplier);
   if (bandCount <= 11) return 21;
   if (bandCount <= 31) return 17;
@@ -236,13 +184,9 @@ export function normalizeParameters(
   const divisor = greatestCommonDivisor(boundedP, boundedQ);
   const p = boundedP / divisor;
   const q = boundedQ / divisor;
-  const customBasis = normalizeCustomBasis(
-    candidate.customBasis ?? defaultParameters.customBasis,
-  );
   const samples = automaticMomentumSamples({
     lattice: candidate.lattice,
     q,
-    customBasis,
   });
   const hoppings = candidate.hoppings
     .filter(Number.isFinite)
@@ -272,7 +216,6 @@ export function normalizeParameters(
     ),
     samples,
     bgt: boundedNumber(candidate.bgt, defaultParameters.bgt, 0, 10),
-    customBasis,
   };
 }
 
@@ -285,7 +228,6 @@ const latticeDefaults: Record<
   honeycomb: { theta: [1, 3], period: 1, alpha: 1 },
   kagome: { theta: [1, 3], period: 8, alpha: 1 },
   bravais: { theta: [67, 180], period: 1, alpha: 1 },
-  custom: { theta: [1, 3], period: 1, alpha: 1 },
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -303,7 +245,6 @@ export const useAppStore = create<AppState>((set) => ({
     dispersion: 0,
   },
   colorMode: "spectral",
-  topologicalPalette: "avron",
   surfaceMetric: "energy",
   geometryColumnsExpanded: false,
   bandCutZoom: 1,
@@ -362,7 +303,6 @@ export const useAppStore = create<AppState>((set) => ({
       },
     })),
   setColorMode: (colorMode) => set({ colorMode }),
-  setTopologicalPalette: (topologicalPalette) => set({ topologicalPalette }),
   setSurfaceMetric: (surfaceMetric) => set({ surfaceMetric }),
   setGeometryColumnsExpanded: (geometryColumnsExpanded) =>
     set({ geometryColumnsExpanded }),
@@ -386,52 +326,4 @@ export const useAppStore = create<AppState>((set) => ({
   setProgress: (progress) => set({ progress }),
   setActiveRequest: (activeRequestId) => set({ activeRequestId }),
   setRuntimeReady: (runtimeReady) => set({ runtimeReady }),
-  hydrate: ({
-    view,
-    focus,
-    colorMode,
-    topologicalPalette,
-    surfaceMetric,
-    geometryColumnsExpanded,
-    bandCutZoom,
-    selectedBand,
-    selectedMomentum,
-    fluxTransform,
-    ...parameters
-  }) =>
-    set((state) => ({
-      view:
-        focus && focus !== "workspace"
-          ? focus
-          : view ?? state.view,
-      focus: focus ?? view ?? state.focus,
-      parameters: normalizeParameters({ ...state.parameters, ...parameters }),
-      colorMode: colorMode ?? state.colorMode,
-      topologicalPalette: topologicalPalette ?? state.topologicalPalette,
-      surfaceMetric: surfaceMetric ?? state.surfaceMetric,
-      geometryColumnsExpanded:
-        geometryColumnsExpanded ?? state.geometryColumnsExpanded,
-      bandCutZoom: boundedNumber(
-        bandCutZoom ?? state.bandCutZoom,
-        state.bandCutZoom,
-        1,
-        64,
-      ),
-      selectedBand: boundedInteger(
-        selectedBand ?? state.selectedBand,
-        state.selectedBand,
-        0,
-        10_000,
-      ),
-      selectedMomentum: selectedMomentum
-        ? {
-            source:
-              selectedMomentum.source === "wilson" ? "wilson" : "path",
-            fraction: boundedNumber(selectedMomentum.fraction, 0, 0, 1),
-          }
-        : state.selectedMomentum,
-      fluxTransform: fluxTransform
-        ? normalizeFluxTransform(fluxTransform, state.fluxTransform)
-        : state.fluxTransform,
-    })),
 }));

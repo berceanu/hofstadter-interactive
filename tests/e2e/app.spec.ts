@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 
 async function webglInkPixels(page: import("@playwright/test").Page) {
   return page.locator(".plot-stage canvas").evaluate((canvas) => {
@@ -42,8 +41,55 @@ async function waitForBandGrid(page: import("@playwright/test").Page) {
   });
 }
 
+async function configureApp(
+  page: import("@playwright/test").Page,
+  path = "/",
+) {
+  const query = new URL(path, "http://localhost").searchParams;
+  await page.goto("/");
+
+  const lattice = query.get("lat");
+  if (lattice) {
+    await page.getByLabel("Lattice geometry", { exact: true }).selectOption(
+      lattice,
+    );
+  }
+  const q = query.get("q");
+  if (q) await page.getByLabel("q", { exact: true }).fill(q);
+  const p = query.get("p");
+  if (p) await page.getByLabel("p", { exact: true }).fill(p);
+
+  const fields = [
+    ["t", "#parameter-hoppings"],
+    ["alpha", "#parameter-alpha"],
+    ["period", "#parameter-period"],
+    ["td", "#parameter-theta-denominator"],
+    ["tn", "#parameter-theta-numerator"],
+    ["bgt", "#parameter-band-gap-threshold"],
+  ] as const;
+  for (const [parameter, selector] of fields) {
+    const value = query.get(parameter);
+    const field = page.locator(selector);
+    if (value !== null && await field.isEnabled()) {
+      await field.fill(value);
+      await field.press("Tab");
+    }
+  }
+
+  const target = query.get("focus") ?? query.get("view");
+  const labels: Record<string, RegExp> = {
+    butterfly: /Butterfly/,
+    wannier: /Wannier/,
+    lattice: /Lattice \+ BZ/,
+    bands: /Band surfaces/,
+  };
+  if (target && target !== "workspace" && labels[target]) {
+    await page.getByRole("button", { name: labels[target] }).click();
+  }
+}
+
 test(
-  "loads the scientific workspace and keeps state in the URL",
+  "loads the scientific workspace and updates local state",
   { tag: "@smoke" },
   async ({ page }) => {
     await page.goto("/");
@@ -65,17 +111,29 @@ test(
     await page.getByLabel("Lattice geometry", { exact: true }).selectOption(
       "triangular",
     );
-    await expect(page).toHaveURL(/lat=triangular/);
+    await expect(
+      page.getByLabel("Lattice geometry", { exact: true }),
+    ).toHaveValue("triangular");
     await page.getByRole("button", { name: /Lattice \+ BZ/ }).click();
     await expect(
       page.getByRole("heading", { name: "Lattice geometry" }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/focus=lattice/);
+    await expect(page).not.toHaveURL(/\?/);
+    await expect(
+      page.locator('#parameter-lattice option[value="custom"]'),
+    ).toHaveCount(0);
+    for (const name of ["LOAD NPZ", "CSV", "NPZ", "PNG", "Art PNG", "Copy link"]) {
+      await expect(
+        page.getByRole("button", { name, exact: true }),
+      ).toHaveCount(0);
+    }
+    await expect(page.getByLabel("Topology palette")).toHaveCount(0);
   },
 );
 
 test("the primary navigation remains usable on a mobile viewport", async ({ page }) => {
-  await page.goto("/?view=wannier&lat=square&q=7");
+  await page.goto("/");
+  await page.locator(".view-nav").getByRole("button", { name: /Wannier/ }).click();
   await expect(page.getByRole("heading", { name: "Wannier diagram" })).toBeVisible({
     timeout: 15_000,
   });
@@ -84,18 +142,15 @@ test("the primary navigation remains usable on a mobile viewport", async ({ page
 });
 
 test("edits the magnetic flux as one canonical p/q pair", async ({ page }) => {
-  await page.goto(
-    "/?focus=lattice&lat=square&p=1&q=12&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
+  await page.goto("/");
   const pInput = page.getByRole("spinbutton", { name: "p", exact: true });
   const qInput = page.getByRole("spinbutton", { name: "q", exact: true });
+  await qInput.fill("12");
   await pInput.fill("6");
   await expect(pInput).toHaveValue("6");
   await expect(qInput).toHaveValue("12");
-  await expect(page).toHaveURL(/p=1&q=2/);
   await qInput.fill("11");
   await expect(qInput).toHaveValue("11");
-  await expect(page).toHaveURL(/p=6&q=11/);
   await qInput.press("Tab");
 
   await expect(pInput).toHaveValue("6");
@@ -107,58 +162,21 @@ test(
   "runs the real Pyodide butterfly computation to completion",
   { tag: "@smoke" },
   async ({ page }) => {
-    await page.goto(
-      "/?view=butterfly&lat=square&p=1&q=7&t=1&tn=1&td=2&period=1&samp=7",
-    );
+    await page.goto("/");
+    await page.getByLabel("q", { exact: true }).fill("7");
     await expect(page.locator(".runtime-status")).toContainText(
       "Computed locally in",
       { timeout: 30_000 },
     );
-    await expect(page.getByText(/states$/)).toContainText("42 states");
     const plot = page.locator('[data-flux-plot="butterfly"]');
+    await expect(plot).toHaveAttribute("data-point-count", "42");
     await expect(plot.locator(".plot-axes")).toContainText("energy E");
     await expect(plot.locator(".plot-axes")).not.toContainText("t₁");
   },
 );
 
-test("normalizes invalid scientific parameters before computation", async ({ page }) => {
-  await page.goto(
-    "/?view=lattice&lat=bravais&p=10&q=3&t=1&alpha=-4&tn=180&td=0&period=0&samp=32",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Lattice geometry ready",
-    { timeout: 30_000 },
-  );
-  await expect(page).toHaveURL(/p=2&q=3/);
-  await expect(page).toHaveURL(/alpha=0.1/);
-  await expect(page).toHaveURL(/tn=1&td=2/);
-  await expect(page).toHaveURL(/period=1/);
-  await expect(page).not.toHaveURL(/samp=/);
-  await expect(page.locator(".runtime-status")).not.toContainText("Traceback");
-});
-
-test("repairs a malicious honeycomb angle before running the spectrum", async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.goto(
-    "/?view=butterfly&lat=honeycomb&p=1&q=47&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page).toHaveURL(/tn=1&td=3/);
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 45_000 },
-  );
-  const range = await page.locator(".spectrum-shell").evaluate((element) => ({
-    min: Number((element as HTMLElement).dataset.energyMin),
-    max: Number((element as HTMLElement).dataset.energyMax),
-  }));
-  expect(range.min).toBeLessThan(-2.9);
-  expect(range.max).toBeGreaterThan(2.9);
-});
-
 test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=lattice&lat=triangular&p=1&q=11&t=1&alpha=1&tn=1&td=3&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -195,7 +213,7 @@ test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }
 });
 
 test("uses gauge-invariant Chern groups for touching bands", async ({ page }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=bands&lat=kagome&p=1&q=3&t=1&alpha=1&tn=1&td=3&period=8&samp=17",
   );
   await waitForBandGrid(page);
@@ -207,34 +225,13 @@ test("uses gauge-invariant Chern groups for touching bands", async ({ page }) =>
   await expect(page.locator(".chern-badge")).toHaveText("C2–4 = 0");
 });
 
-test("keeps cancellation final and exports computed artifacts", async ({ page }) => {
-  await page.goto(
-    "/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
+test("keeps cancellation final", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("q", { exact: true }).fill("97");
   await page.getByRole("button", { name: "cancel" }).click({ timeout: 30_000 });
   await expect(page.locator(".runtime-status")).toHaveText(
     "Computation cancelled",
   );
-
-  await page.goto(
-    "/?view=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  for (const [label, extension] of [
-    ["CSV", "csv"],
-    ["NPZ", "npz"],
-    ["PNG", "png"],
-  ] as const) {
-    const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: label, exact: true }).click();
-    const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe(
-      `hofstadter-square-q7-butterfly.${extension}`,
-    );
-  }
 });
 
 test("streams the butterfly progressively and repaints it after a responsive resize", async ({
@@ -242,7 +239,7 @@ test("streams the butterfly progressively and repaints it after a responsive res
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "covered by the explicit 900 px resize");
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await page.waitForFunction(
@@ -282,7 +279,7 @@ test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "desktop pointer interaction");
-  await page.goto(
+  await configureApp(page,
     "/?view=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -316,7 +313,7 @@ test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend
 test("renders the Avron gap plane with Hall-conductivity segments", async ({
   page,
 }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=butterfly&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -340,9 +337,9 @@ test(
   { tag: "@smoke" },
   async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === "mobile", "desktop 3D interaction");
-    await page.goto(
-      "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
-    );
+    await page.goto("/");
+    await page.getByLabel("q", { exact: true }).fill("5");
+    await page.getByRole("button", { name: /Band surfaces/ }).click();
     await waitForBandGrid(page);
     const before = await page
       .locator(".momentum-marker .marker-point")
@@ -382,7 +379,7 @@ test("selects thin bands forgivingly and scrubs momentum in real time", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "desktop pointer interaction");
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
   );
   await waitForBandGrid(page);
@@ -465,7 +462,7 @@ test("adapts path detail to linked-cut zoom without recomputing bands", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "desktop wheel interaction");
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=11&t=1&alpha=1&tn=1&td=2&period=1",
   );
   await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
@@ -529,7 +526,7 @@ test("adapts path detail to linked-cut zoom without recomputing bands", async ({
 test("plots branch-safe Wilson phases and links a k2 row to the surface", async ({
   page,
 }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=17",
   );
   await waitForBandGrid(page);
@@ -558,49 +555,11 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
   await expect(rowSlider).toHaveAttribute("aria-valuenow", "0");
   await page.keyboard.press("End");
   await expect(rowSlider).toHaveAttribute("aria-valuenow", "20");
-  await expect(page).toHaveURL(/mom=wilson%3A1/);
-});
-
-test("exports six-field lattice links without corrupting record boundaries", async ({
-  page,
-}) => {
-  await page.goto(
-    "/?focus=lattice&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Lattice geometry ready",
-    { timeout: 30_000 },
-  );
-  const renderedLinks = await page.locator(".hopping-links line").count();
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "CSV", exact: true }).click();
-  const download = await downloadPromise;
-  const path = await download.path();
-  expect(path).not.toBeNull();
-  const csv = await readFile(path!, "utf8");
-  const linkSection = csv
-    .split("link,x1,y1,x2,y2,neighbor_shell,amplitude\n")[1]
-    .split("\n\n")[0]
-    .trim()
-    .split("\n");
-  expect(linkSection).toHaveLength(renderedLinks);
-  expect(linkSection.every((row) => row.split(",").length === 7)).toBe(true);
-});
-
-test("rejects an oversized band grid before allocating it", async ({ page }) => {
-  test.setTimeout(45_000);
-  await page.goto(
-    "/?focus=bands&lat=custom&p=1&q=199&t=1&alpha=1&tn=1&td=3&period=1&basis=0%3A0%3B0.5%3A0%3B0%3A0.5%3B0.5%3A0.5",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "above the 192 MiB browser budget",
-    { timeout: 30_000 },
-  );
 });
 
 test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
   test.setTimeout(120_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&bgt=0.01",
   );
   const shell = page.locator(".app-shell");
@@ -660,7 +619,7 @@ test("automatically refines q=31 dispersion without detaching the lifted symmetr
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "desktop 3D refinement");
   test.setTimeout(120_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&bgt=0.01",
   );
   const shell = page.locator(".app-shell");
@@ -710,7 +669,7 @@ test("links property-table hover and selection to the band group", async ({
   page,
 }) => {
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?view=bands&lat=square&p=1&q=4&t=1&alpha=1&tn=1&td=2&period=1&samp=11&bgt=0.01",
   );
   await waitForBandGrid(page);
@@ -739,7 +698,7 @@ test("links property-table hover and selection to the band group", async ({
 test("links symmetry points, both BZ outlines, and the lifted 3D path", async ({
   page,
 }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
   );
   await waitForBandGrid(page);
@@ -772,12 +731,12 @@ test("links symmetry points, both BZ outlines, and the lifted 3D path", async ({
   await expect(page.locator(".symmetry-points")).toContainText("ΓXMY");
 });
 
-test("drags the shared coprime flux cursor without launching another sweep", async ({
+test("drags the linked coprime flux cursor without launching another sweep", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "wide single-workspace interaction");
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -801,7 +760,8 @@ test("drags the shared coprime flux cursor without launching another sweep", asy
   });
   await page.mouse.up();
 
-  await expect(page).toHaveURL(/p=3&q=7/);
+  await expect(page.getByLabel("p", { exact: true })).toHaveValue("3");
+  await expect(page.getByLabel("q", { exact: true })).toHaveValue("7");
   await expect(butterfly).toHaveAttribute("data-current-numerator", "3");
   await expect
     .poll(
@@ -842,7 +802,7 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "wide single-workspace behavior");
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -851,19 +811,7 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
   );
   const plot = page.locator('[data-flux-plot="butterfly"]');
   const oldEnergyMaximum = await plot.getAttribute("data-energy-max");
-  const butterflyExports = [
-    page.getByRole("button", { name: "Export Hofstadter butterfly CSV" }),
-    page.getByRole("button", { name: "Export Hofstadter butterfly NPZ" }),
-    page.getByRole("button", { name: "Export Hofstadter butterfly PNG" }),
-  ];
-  const workspacePng = page.getByRole("button", { name: "PNG workspace" });
-  for (const button of [...butterflyExports, workspacePng]) {
-    await expect(button).toBeEnabled();
-  }
   await page.getByLabel("q", { exact: true }).fill("47");
-  for (const button of [...butterflyExports, workspacePng]) {
-    expect(await button.isDisabled()).toBe(true);
-  }
   await expect(plot).toHaveAttribute("data-recomputing", "true", {
     timeout: 10_000,
   });
@@ -873,14 +821,11 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
   await expect(plot).toHaveAttribute("data-recomputing", "false", {
     timeout: 45_000,
   });
-  for (const button of butterflyExports) {
-    await expect(button).toBeEnabled();
-  }
 });
 
 test("falls back from the workspace to tabs below 1100px", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 760 });
-  await page.goto(
+  await configureApp(page,
     "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await expect(page.locator(".single-workspace")).toHaveCount(0);
@@ -898,7 +843,7 @@ test("loads quantum geometry only after the user asks for it", async ({
   page,
 }) => {
   test.setTimeout(60_000);
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=4&t=1&alpha=1&tn=1&td=2&period=1&samp=7&bgt=0.01",
   );
   await waitForBandGrid(page);
@@ -921,37 +866,10 @@ test("loads quantum geometry only after the user asks for it", async ({
   await expect(shell).toHaveAttribute("data-geometry-request-count", "1");
 });
 
-test("exports a clean three-times-scale art PNG", async ({ page }) => {
-  await page.goto(
-    "/?focus=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  await page.getByRole("button", { name: "Gaps", exact: true }).click();
-  await page.getByLabel("transparent", { exact: true }).check();
-  const stage = page.locator(".plot-stage");
-  const bounds = await stage.boundingBox();
-  expect(bounds).not.toBeNull();
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Art PNG", exact: true }).click();
-  const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe(
-    "butterfly_square_q_7_plane_art.png",
-  );
-  const path = await download.path();
-  expect(path).not.toBeNull();
-  const bytes = await readFile(path!);
-  expect(bytes.readUInt32BE(16)).toBe(Math.round(bounds!.width * 3));
-  expect(bytes.readUInt32BE(20)).toBe(Math.round(bounds!.height * 3));
-  expect(bytes[25]).toBe(6);
-});
-
 test("marks unsupported fast topology as unavailable instead of physical C = 0", async ({
   page,
 }) => {
-  await page.goto(
+  await configureApp(page,
     "/?view=butterfly&lat=kagome&p=1&q=11&t=1&alpha=1&tn=1&td=3&period=8&samp=7",
   );
   await expect(page.locator(".runtime-status")).toContainText(
@@ -964,35 +882,12 @@ test("marks unsupported fast topology as unavailable instead of physical C = 0",
   await expect(topologyButton).toBeDisabled();
 });
 
-test("switches among the Avron, jet, and red-blue topology palettes", async ({
-  page,
-}) => {
-  await page.goto(
-    "/?focus=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  const palette = page.getByLabel("Topology palette");
-  await expect(palette).toHaveValue("avron");
-  await page.getByRole("button", { name: "Chern", exact: true }).click();
-  await palette.selectOption("jet");
-  await expect(palette).toHaveValue("jet");
-  await expect(page.getByLabel("Chern number color scale").locator("i"))
-    .toHaveAttribute("style", /rgb\(0, 0, 128\)/);
-  await palette.selectOption("red-blue");
-  await expect(palette).toHaveValue("red-blue");
-  await expect(page.getByLabel("Chern number color scale").locator("i"))
-    .toHaveAttribute("style", /rgb\(8, 48, 107\)/);
-});
-
 test("morphs the selected energy sheet into an educational BZ torus", async ({
   page,
 }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  await page.goto(
+  await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
   await waitForBandGrid(page);
@@ -1029,103 +924,4 @@ test("morphs the selected energy sheet into an educational BZ torus", async ({
   await expect(scene).toHaveAttribute("data-contours", "hidden");
   await expect(scene).toHaveAttribute("data-contour-segments", "0");
   expect(pageErrors).toEqual([]);
-});
-
-test("loads a custom basis through the upstream generic lattice path", async ({
-  page,
-}) => {
-  await page.goto(
-    "/?focus=lattice&lat=custom&p=1&q=3&t=1&alpha=1&tn=1&td=3&period=1&samp=7&basis=0%3A0%3B0.5%3A0.25",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Lattice geometry ready",
-    { timeout: 30_000 },
-  );
-  await expect(
-    page.getByLabel("Lattice geometry", { exact: true }),
-  ).toHaveValue("custom");
-  await expect(page.getByLabel("Custom basis sites", { exact: true })).toHaveValue(
-    "0, 0\n0.5, 0.25",
-  );
-  await expect(page.getByText("2-site primitive cell")).toBeVisible();
-  await expect(page).toHaveURL(/basis=0%3A0%3B0.5%3A0.25/);
-
-  await page.getByRole("button", { name: /Butterfly/ }).click();
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  await expect(
-    page.getByRole("button", { name: "Chern unavailable" }),
-  ).toBeDisabled();
-});
-
-test("restores an exported NPZ without launching a replacement sweep", async ({
-  page,
-}) => {
-  await page.goto(
-    "/?focus=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "NPZ", exact: true }).click();
-  const download = await downloadPromise;
-  const archivePath = await download.path();
-  expect(archivePath).not.toBeNull();
-
-  await page.goto(
-    "/?focus=butterfly&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
-  const shell = page.locator(".app-shell");
-  const sweepCount = await shell.getAttribute("data-sweep-count");
-  const archiveBase64 = (await readFile(archivePath!)).toString("base64");
-  await page.evaluate((encoded) => {
-    const binary = atob(encoded);
-    const bytes = Uint8Array.from(binary, (character) =>
-      character.charCodeAt(0)
-    );
-    const transfer = new DataTransfer();
-    transfer.items.add(
-      new File(
-        [bytes],
-        "hofstadter-square-q7-butterfly.npz",
-        { type: "application/octet-stream" },
-      ),
-    );
-    (window as Window & { __npzTransfer?: DataTransfer }).__npzTransfer =
-      transfer;
-    document.querySelector(".app-shell")?.dispatchEvent(
-      new DragEvent("dragenter", {
-        bubbles: true,
-        dataTransfer: transfer,
-      }),
-    );
-  }, archiveBase64);
-  await expect(page.locator(".npz-drop-overlay")).toBeVisible();
-  await page.evaluate(() => {
-    const transfer = (
-      window as Window & { __npzTransfer?: DataTransfer }
-    ).__npzTransfer;
-    document.querySelector(".app-shell")?.dispatchEvent(
-      new DragEvent("drop", {
-        bubbles: true,
-        dataTransfer: transfer ?? null,
-      }),
-    );
-  });
-  await expect(page.locator(".npz-import-toast")).toContainText(
-    "Loaded 42 states and 36 gaps",
-  );
-  await expect(page).toHaveURL(/p=1&q=7/);
-  await expect(
-    page.locator('[data-flux-plot="butterfly"]'),
-  ).toHaveAttribute("data-point-count", "42");
-  await expect(shell).toHaveAttribute("data-sweep-count", sweepCount!);
 });

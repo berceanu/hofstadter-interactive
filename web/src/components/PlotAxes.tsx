@@ -35,7 +35,6 @@ export function PlotAxes({
       viewBox="0 0 1000 600"
       preserveAspectRatio="none"
       aria-hidden="true"
-      data-export-layer
     >
       <g className="plot-grid">
         {xTicks.map((tick) => (

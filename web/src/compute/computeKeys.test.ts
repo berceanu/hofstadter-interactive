@@ -37,23 +37,6 @@ describe("panel-specific computation keys", () => {
     expect(bandComputationKey(second)).not.toBe(bandComputationKey(first));
   });
 
-  it("keys every custom-lattice result by the edited basis", () => {
-    const first = {
-      ...defaultParameters,
-      lattice: "custom" as const,
-      customBasis: [[0, 0], [0.5, 0]] as [number, number][],
-    };
-    const second = {
-      ...first,
-      customBasis: [[0, 0], [0.5, 0.25]] as [number, number][],
-    };
-    expect(sweepComputationKey(second)).not.toBe(sweepComputationKey(first));
-    expect(bandComputationKey(second)).not.toBe(bandComputationKey(first));
-    expect(latticeComputationKey(second)).not.toBe(
-      latticeComputationKey(first),
-    );
-  });
-
   it("chooses a memory-bounded anisotropic topology grid for q=31", () => {
     const parameters = {
       ...defaultParameters,

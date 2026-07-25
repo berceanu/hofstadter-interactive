@@ -12,11 +12,14 @@ test("the built site boots Python and computes under the deployed base path", as
       missingAssets.push(response.url());
     }
   });
-  await page.goto("?view=butterfly&lat=square&p=1&q=7&t=1&tn=1&td=2&period=1");
+  await page.goto("");
+  await page.getByLabel("q", { exact: true }).fill("7");
   await expect(page.locator(".runtime-status")).toContainText(
     "Computed locally in",
     { timeout: 45_000 },
   );
-  await expect(page.getByText(/states$/)).toContainText("42 states");
+  await expect(
+    page.locator('[data-flux-plot="butterfly"]'),
+  ).toHaveAttribute("data-point-count", "42");
   expect(missingAssets).toEqual([]);
 });

@@ -1,9 +1,6 @@
 import {
   type ReactNode,
   useEffect,
-  useMemo,
-  useRef,
-  useState,
 } from "react";
 import { BandView } from "./BandView";
 import { ButterflyPlot } from "./ButterflyPlot";
@@ -23,27 +20,13 @@ import {
 import type { FocusKind, ViewKind } from "../compute/contracts";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
-import { parseUrlState } from "../state/urlState";
 import { flattenButterfly } from "../utils/arrays";
 import {
-  exportArtPng,
-  exportCsv,
-  exportNpz,
-  exportPng,
-} from "../utils/exports";
-import { restoreNpzFile } from "../utils/npzImport";
-import {
   activeTopologyComputationKey,
-  bandComputationKey,
   baseTopologyGridSufficient,
-  dispersionComputationKey,
-  dispersionRefinementGrid,
   topologyRefinementPlan,
 } from "../compute/computeKeys";
-import {
-  exportsPending,
-  fluxFraction,
-} from "../utils/viewIntegrity";
+import { fluxFraction } from "../utils/viewIntegrity";
 
 const views: { id: ViewKind; label: string; short: string }[] = [
   { id: "butterfly", label: "Butterfly", short: "01" },
@@ -160,12 +143,6 @@ function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
   const cache = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
   const setColorMode = useAppStore((state) => state.setColorMode);
-  const topologicalPalette = useAppStore(
-    (state) => state.topologicalPalette,
-  );
-  const setTopologicalPalette = useAppStore(
-    (state) => state.setTopologicalPalette,
-  );
   const topologyAvailable =
     cache.butterfly?.chunks[0]?.topologyAvailable ?? true;
   return (
@@ -208,23 +185,6 @@ function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
           </button>
         </div>
       )}
-      <label className="palette-select">
-        <span>palette</span>
-        <select
-          aria-label="Topology palette"
-          value={topologicalPalette}
-          disabled={!topologyAvailable}
-          onChange={(event) =>
-            setTopologicalPalette(
-              event.target.value as "avron" | "jet" | "red-blue",
-            )
-          }
-        >
-          <option value="avron">Avron</option>
-          <option value="jet">Jet</option>
-          <option value="red-blue">Red–blue</option>
-        </select>
-      </label>
     </div>
   );
 }
@@ -332,22 +292,6 @@ function BandTools() {
   );
 }
 
-const EXPORT_PENDING_HINT =
-  "Recomputing — exports resume when the view matches the current parameters";
-
-function reportExportError(error: unknown) {
-  useAppStore.getState().setProgress({
-    phase: "error",
-    fraction: 0,
-    message:
-      error instanceof Error ? error.message : "Export failed unexpectedly.",
-  });
-}
-
-function exportArtPngSafely(...args: Parameters<typeof exportArtPng>) {
-  exportArtPng(...args).catch(reportExportError);
-}
-
 function viewTitle(view: ViewKind) {
   if (view === "butterfly") return "Hofstadter butterfly";
   if (view === "wannier") return "Wannier diagram";
@@ -379,58 +323,10 @@ function WorkspacePanel({
   help: HelpCopy;
   children: ReactNode;
 }) {
-  const root = useRef<HTMLElement>(null);
-  const parameters = useAppStore((state) => state.parameters);
-  const selectedBand = useAppStore((state) => state.selectedBand);
-  const bandCutZoom = useAppStore((state) => state.bandCutZoom);
   const setFocus = useAppStore((state) => state.setFocus);
-  const colorMode = useAppStore((state) => state.colorMode);
-  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
-  const geometryColumnsExpanded = useAppStore(
-    (state) => state.geometryColumnsExpanded,
-  );
-  const cache = useResultCache();
-  const currentTopology =
-    cache.topologyKey
-        === activeTopologyComputationKey(
-          parameters,
-          selectedBand,
-          cache.bands,
-          cache.bandsKey,
-          topologyRefinementPlan(parameters),
-        )
-      ? cache.topology
-      : undefined;
-  const currentDispersion =
-    cache.dispersionKey
-        === dispersionComputationKey(
-          parameters,
-          dispersionRefinementGrid(parameters, bandCutZoom),
-        )
-      ? cache.dispersion
-      : undefined;
-  const currentGeometry =
-    cache.geometryKey === bandComputationKey(parameters)
-      ? cache.geometry
-      : undefined;
-  const [transparentArt, setTransparentArt] = useState(false);
-  const geometryRequested =
-    id === "bands"
-    && (
-      surfaceMetric === "gxx"
-      || surfaceMetric === "gxy"
-      || geometryColumnsExpanded
-    );
-  const exportsDisabled = exportsPending(
-    id,
-    parameters,
-    cache,
-    geometryRequested,
-  );
 
   return (
     <section
-      ref={root}
       className={`workspace-panel ${className ?? ""}`}
       data-panel-id={id}
     >
@@ -455,112 +351,14 @@ function WorkspacePanel({
         </div>
       </header>
       <div className="workspace-panel-body">{children}</div>
-      <div className="panel-export-tools" aria-label={`${title} exports`}>
-        <button
-          aria-label={`Export ${title} CSV`}
-          disabled={exportsDisabled}
-          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-          onClick={() =>
-            exportCsv(
-              parameters,
-              id,
-              flattenButterfly(cache.butterfly),
-              cache.bands,
-              cache.lattice,
-              currentGeometry,
-              currentTopology,
-              currentDispersion,
-            )
-          }
-        >
-          CSV
-        </button>
-        <button
-          aria-label={`Export ${title} NPZ`}
-          disabled={exportsDisabled}
-          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-          onClick={() =>
-            exportNpz(
-              parameters,
-              id,
-              flattenButterfly(cache.butterfly),
-              cache.bands,
-              cache.lattice,
-              currentGeometry,
-              currentTopology,
-              currentDispersion,
-            )
-          }
-        >
-          NPZ
-        </button>
-        <button
-          aria-label={`Export ${title} PNG`}
-          disabled={exportsDisabled}
-          title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-          onClick={() => {
-            if (root.current) exportPng(root.current, parameters, id).catch(reportExportError);
-          }}
-        >
-          PNG
-        </button>
-        {(id === "butterfly" || id === "wannier") && (
-          <>
-            <button
-              aria-label={`Export ${title} Art PNG`}
-              disabled={exportsDisabled}
-              title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-              onClick={() => {
-                const stage = root.current?.querySelector<HTMLElement>(
-                  ".plot-stage",
-                );
-                if (stage) {
-                  exportArtPngSafely(
-                    stage,
-                    parameters,
-                    id,
-                    colorMode,
-                    transparentArt,
-                  );
-                }
-              }}
-            >
-              Art PNG
-            </button>
-            <label className="transparent-art-toggle">
-              <input
-                type="checkbox"
-                checked={transparentArt}
-                onChange={(event) =>
-                  setTransparentArt(event.target.checked)
-                }
-              />
-              alpha
-            </label>
-          </>
-        )}
-      </div>
     </section>
   );
 }
 
 function WorkspaceDashboard() {
-  const root = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
-  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
-  const geometryColumnsExpanded = useAppStore(
-    (state) => state.geometryColumnsExpanded,
-  );
-  const cache = useResultCache();
-  const geometryRequested =
-    surfaceMetric === "gxx"
-    || surfaceMetric === "gxy"
-    || geometryColumnsExpanded;
-  const exportsDisabled = views.some(({ id }) =>
-    exportsPending(id, parameters, cache, id === "bands" && geometryRequested)
-  );
   return (
-    <main className="single-workspace" ref={root} data-workspace>
+    <main className="single-workspace" data-workspace>
       <div className="workspace-commandbar">
         <div>
           <span className="eyebrow">SINGLE SCIENTIFIC WORKSPACE</span>
@@ -569,26 +367,6 @@ function WorkspaceDashboard() {
           </strong>
         </div>
         <RuntimeStatus />
-        <div className="workspace-share-tools">
-          <button
-            disabled={exportsDisabled}
-            title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-            onClick={() => {
-              if (root.current) {
-                exportPng(root.current, parameters, "workspace").catch(reportExportError);
-              }
-            }}
-          >
-            PNG workspace
-          </button>
-          <button
-            onClick={() =>
-              void navigator.clipboard.writeText(window.location.href)
-            }
-          >
-            Copy link
-          </button>
-        </div>
       </div>
 
       <aside className="workspace-sidebar">
@@ -644,63 +422,15 @@ function WorkspaceDashboard() {
 }
 
 function FocusedView({ view }: { view: ViewKind }) {
-  const exportRoot = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
-  const selectedBand = useAppStore((state) => state.selectedBand);
-  const bandCutZoom = useAppStore((state) => state.bandCutZoom);
-  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
-  const geometryColumnsExpanded = useAppStore(
-    (state) => state.geometryColumnsExpanded,
-  );
   const cache = useResultCache();
-  const currentTopology =
-    cache.topologyKey
-        === activeTopologyComputationKey(
-          parameters,
-          selectedBand,
-          cache.bands,
-          cache.bandsKey,
-          topologyRefinementPlan(parameters),
-        )
-      ? cache.topology
-      : undefined;
-  const currentDispersion =
-    cache.dispersionKey
-        === dispersionComputationKey(
-          parameters,
-          dispersionRefinementGrid(parameters, bandCutZoom),
-        )
-      ? cache.dispersion
-      : undefined;
-  const currentGeometry =
-    cache.geometryKey === bandComputationKey(parameters)
-      ? cache.geometry
-      : undefined;
-  const colorMode = useAppStore((state) => state.colorMode);
-  const [transparentArt, setTransparentArt] = useState(false);
-  const butterfly = useMemo(
-    () => flattenButterfly(cache.butterfly),
-    [cache.butterfly],
-  );
+  const butterfly = flattenButterfly(cache.butterfly);
   const help = resultHelp[view];
-  const geometryRequested =
-    view === "bands"
-    && (
-      surfaceMetric === "gxx"
-      || surfaceMetric === "gxy"
-      || geometryColumnsExpanded
-    );
-  const exportsDisabled = exportsPending(
-    view,
-    parameters,
-    cache,
-    geometryRequested,
-  );
 
   return (
     <main className="workspace focused-workspace">
       <ParameterPanel />
-      <section className="visualization-area" ref={exportRoot}>
+      <section className="visualization-area">
         <div className="visualization-header">
           <div>
             <span className="eyebrow">LOCAL QUANTUM SPECTRUM</span>
@@ -734,100 +464,6 @@ function FocusedView({ view }: { view: ViewKind }) {
           {(view === "butterfly" || view === "wannier") && (
             <SelectionReadout />
           )}
-          <div className="export-deck">
-            <span className="eyebrow">EXPORT / SHARE</span>
-            <div>
-              <button
-                disabled={exportsDisabled}
-                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-                onClick={() =>
-                  exportCsv(
-                    parameters,
-                    view,
-                    butterfly,
-                    cache.bands,
-                    cache.lattice,
-                    currentGeometry,
-                    currentTopology,
-                    currentDispersion,
-                  )
-                }
-              >
-                CSV
-              </button>
-              <button
-                disabled={exportsDisabled}
-                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-                onClick={() =>
-                  exportNpz(
-                    parameters,
-                    view,
-                    butterfly,
-                    cache.bands,
-                    cache.lattice,
-                    currentGeometry,
-                    currentTopology,
-                    currentDispersion,
-                  )
-                }
-              >
-                NPZ
-              </button>
-              <button
-                disabled={exportsDisabled}
-                title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-                onClick={() => {
-                  if (exportRoot.current) {
-                    exportPng(exportRoot.current, parameters, view).catch(reportExportError);
-                  }
-                }}
-              >
-                PNG
-              </button>
-              {(view === "butterfly" || view === "wannier") && (
-                <>
-                  <button
-                    disabled={exportsDisabled}
-                    title={exportsDisabled ? EXPORT_PENDING_HINT : undefined}
-                    onClick={() => {
-                      const stage =
-                        exportRoot.current?.querySelector<HTMLElement>(
-                          ".plot-stage",
-                        );
-                      if (stage) {
-                        exportArtPngSafely(
-                          stage,
-                          parameters,
-                          view,
-                          colorMode,
-                          transparentArt,
-                        );
-                      }
-                    }}
-                  >
-                    Art PNG
-                  </button>
-                  <label className="transparent-art-toggle">
-                    <input
-                      type="checkbox"
-                      checked={transparentArt}
-                      onChange={(event) =>
-                        setTransparentArt(event.target.checked)
-                      }
-                    />
-                    transparent
-                  </label>
-                </>
-              )}
-              <button
-                onClick={() =>
-                  void navigator.clipboard.writeText(window.location.href)
-                }
-              >
-                Copy link
-              </button>
-            </div>
-          </div>
           <div className="result-stats">
             <span className="eyebrow">RESULT</span>
             <strong>
@@ -849,17 +485,6 @@ function FocusedView({ view }: { view: ViewKind }) {
 }
 
 export default function App() {
-  const hydrated = useRef(false);
-  const npzInput = useRef<HTMLInputElement>(null);
-  const dragDepth = useRef(0);
-  const [npzDragActive, setNpzDragActive] = useState(false);
-  const [npzMessage, setNpzMessage] = useState<
-    { kind: "success" | "error"; text: string } | undefined
-  >(undefined);
-  if (!hydrated.current) {
-    useAppStore.getState().hydrate(parseUrlState());
-    hydrated.current = true;
-  }
   useCompute();
   const view = useAppStore((state) => state.view);
   const focus = useAppStore((state) => state.focus);
@@ -875,32 +500,6 @@ export default function App() {
     cache.butterfly?.chunks[0]?.topologyAvailable ?? true;
   const showWorkspace = workspaceWide && focus === "workspace";
   const activeNavigation: FocusKind = workspaceWide ? focus : view;
-
-  async function loadNpz(file?: File) {
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".npz")) {
-      setNpzMessage({
-        kind: "error",
-        text: "Choose a .npz butterfly or Wannier archive.",
-      });
-      return;
-    }
-    try {
-      await cancelActiveComputation();
-      const summary = await restoreNpzFile(file);
-      setNpzMessage({
-        kind: "success",
-        text: `Loaded ${summary.states.toLocaleString()} states and ${summary.gaps.toLocaleString()} gaps from ${file.name}.`,
-      });
-    } catch (error: unknown) {
-      setNpzMessage({
-        kind: "error",
-        text: error instanceof Error ? error.message : "Unable to load NPZ.",
-      });
-    } finally {
-      if (npzInput.current) npzInput.current.value = "";
-    }
-  }
 
   useEffect(() => {
     const query = window.matchMedia("(min-width: 1100px)");
@@ -936,28 +535,6 @@ export default function App() {
       data-geometry-request-count={counters.geometry}
       data-topology-request-count={counters.topology}
       data-dispersion-request-count={counters.dispersion}
-      onDragEnter={(event) => {
-        if (!event.dataTransfer.types.includes("Files")) return;
-        event.preventDefault();
-        dragDepth.current += 1;
-        setNpzDragActive(true);
-      }}
-      onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes("Files")) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-      }}
-      onDragLeave={(event) => {
-        if (!event.dataTransfer.types.includes("Files")) return;
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (!dragDepth.current) setNpzDragActive(false);
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        dragDepth.current = 0;
-        setNpzDragActive(false);
-        void loadNpz(event.dataTransfer.files[0]);
-      }}
     >
       <header className="topbar">
         <a
@@ -1000,20 +577,6 @@ export default function App() {
           ))}
         </nav>
         <div className="topbar-actions">
-          <button
-            className="npz-load-button"
-            onClick={() => npzInput.current?.click()}
-          >
-            LOAD NPZ
-          </button>
-          <input
-            ref={npzInput}
-            className="visually-hidden"
-            aria-label="Load NPZ archive"
-            type="file"
-            accept=".npz,application/octet-stream"
-            onChange={(event) => void loadNpz(event.target.files?.[0])}
-          />
           <a
             className="source-link"
             href="https://github.com/berceanu/hofstadter-interactive"
@@ -1024,29 +587,6 @@ export default function App() {
           </a>
         </div>
       </header>
-
-      {npzDragActive && (
-        <div className="npz-drop-overlay" role="status">
-          <div>
-            <strong>DROP NPZ TO RESTORE</strong>
-            <span>parameters + butterfly / Wannier arrays stay local</span>
-          </div>
-        </div>
-      )}
-      {npzMessage && (
-        <div
-          className={`npz-import-toast ${npzMessage.kind}`}
-          role={npzMessage.kind === "error" ? "alert" : "status"}
-        >
-          <span>{npzMessage.text}</span>
-          <button
-            aria-label="Dismiss NPZ message"
-            onClick={() => setNpzMessage(undefined)}
-          >
-            ×
-          </button>
-        </div>
-      )}
 
       {showWorkspace ? <WorkspaceDashboard /> : <FocusedView view={view} />}
 
