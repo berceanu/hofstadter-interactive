@@ -142,8 +142,12 @@ Trust and delivery:
   `check:smoke`, and the comprehensive `check:release` matrix so ordinary edit
   loops do not repeatedly pay for every native, Pyodide, desktop, and mobile
   test.
-- Retry a failed Playwright case once in CI, preserving fail-fast local runs
-  and activating the existing first-retry trace for diagnosing flakes.
+- Retry a failed Playwright case up to twice in CI, preserving fail-fast local
+  runs, recording passed-after-retry audit evidence, and emitting native
+  GitHub annotations for any final browser failure.
+- Move checkout and runtime setup to immutable Node 24 action releases so
+  Pages builds no longer depend on GitHub's deprecated Node 20 compatibility
+  path.
 
 ### Interface guidance
 

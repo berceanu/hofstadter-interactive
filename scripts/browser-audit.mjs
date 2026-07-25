@@ -16,7 +16,10 @@ const executable = join(
   ".bin",
   process.platform === "win32" ? "playwright.cmd" : "playwright",
 );
-const run = spawnSync(executable, ["test", "--reporter=json"], {
+const reporters =
+  process.env.GITHUB_ACTIONS === "true" ? "github,json" : "line,json";
+const command = `playwright test --reporter=${reporters}`;
+const run = spawnSync(executable, ["test", `--reporter=${reporters}`], {
   cwd: root,
   env: {
     ...process.env,
@@ -100,7 +103,7 @@ const result = {
   generated_at: new Date().toISOString(),
   provenance,
   status: passed ? "pass" : "fail",
-  command: "playwright test --reporter=json",
+  command,
   review_verdict: {
     confirmed_findings_fixed: 12,
     summary:
