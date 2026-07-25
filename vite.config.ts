@@ -14,7 +14,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./web/src/test/setup.ts"],
-    exclude: ["tests/e2e/**", "node_modules/**"],
+    // Unit tests live under web/src only; tests/e2e* are Playwright specs
+    // that crash when Vitest imports them.
+    include: ["web/src/**/*.test.{ts,tsx}"],
     css: true,
   },
 });
