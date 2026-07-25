@@ -145,9 +145,9 @@ Trust and delivery:
 - Retry a failed Playwright case up to twice in CI, preserving fail-fast local
   runs, recording passed-after-retry audit evidence, and emitting native
   GitHub annotations for any final browser failure.
-- Move checkout and runtime setup to immutable Node 24 action releases so
-  Pages builds no longer depend on GitHub's deprecated Node 20 compatibility
-  path.
+- Move checkout, runtime setup, artifact upload, and Pages deployment to
+  immutable Node 24 action releases so publishing no longer depends on
+  GitHub's deprecated Node 20 compatibility path.
 
 ### Interface guidance
 

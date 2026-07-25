@@ -1,9 +1,9 @@
 {
   "schema": "hofstadter-interactive/accessibility-audit/1",
-  "generated_at": "2026-07-25T13:48:32.027Z",
+  "generated_at": "2026-07-25T14:02:04.383Z",
   "provenance": {
-    "source_commit": "476fd05e7478f21b3942fddd4351bcd5f566022e",
-    "source_tree_sha256": "6cbdb4d83f01fe890c6b34c9f95fb1e400bb81d0325eaf7161026fa211b7c7ec",
+    "source_commit": "e16fb58aa022e892fd3f6cef1d5c3e9d86bc4821",
+    "source_tree_sha256": "2acb1bd4928f759de9dbbb16dc8c3d7b9dc277fac39a5e0c57cec31068569b03",
     "source_file_count": 207
   },
   "status": "pass",
