@@ -4,15 +4,15 @@ Copyright (C) 2026 the contributors.
 This application incorporates and modifies HofstadterTools 1.0.7,
 Copyright (C) Bartholomew Andrews, licensed under the GNU General Public
 License version 3. Modifications made in 2026 include lazy plotting imports,
-browser-safe pure computation adapters, Pyodide integration, and the
-interactive web interface. The web adapter's Wannier diagram deliberately
-departs from the upstream CLI in two documented ways: the integrated density
-of states for gap r is r/M (Diophantine-consistent) rather than (r-1)/M, and
-cumulative Hall labels come from the Diophantine t_r table (with the
-ambiguous central gap omitted for even q) instead of a cumulative sum of the
-per-band coloring; Diophantine coloring itself is offered only for the
-nearest-neighbour square model, where it agrees with the certified
-Fukui/Wilson invariants.
+browser-safe pure computation adapters, safe primitive-only data archives,
+Pyodide integration, and the interactive web interface. The web adapter's
+Wannier diagram deliberately departs from the upstream CLI in two documented
+ways: the integrated density of states for gap r is r/M
+(Diophantine-consistent) rather than (r-1)/M, and cumulative Hall labels come
+from the Diophantine t_r table (with the ambiguous central gap omitted for
+even q) instead of a cumulative sum of the per-band coloring; Diophantine
+coloring itself is offered only for the nearest-neighbour square model, where
+it agrees with the certified Fukui/Wilson invariants.
 
 The application is distributed without warranty. See LICENSE for the complete
 GPL-3.0 terms and THIRD_PARTY_NOTICES.md for dependency attributions.

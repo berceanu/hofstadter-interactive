@@ -11,7 +11,11 @@ import {
   normalizeParameters,
   useAppStore,
 } from "../state/store";
-import { parseNpzArchive, type NpyArray } from "./npz";
+import {
+  MAX_NPZ_FILE_BYTES,
+  parseNpzArchive,
+  type NpyArray,
+} from "./npz";
 
 const supportedLattices = new Set<LatticeKind>([
   "square",
@@ -31,7 +35,17 @@ function asFloat(array?: NpyArray) {
 
 function asInt(array?: NpyArray) {
   if (!array) return undefined;
-  return array instanceof Int32Array ? array : Int32Array.from(array);
+  if (array instanceof Int32Array) return array;
+  for (const value of array) {
+    if (
+      !Number.isInteger(value)
+      || value < -2147483648
+      || value > 2147483647
+    ) {
+      throw new Error("An integer array contains a non-integer value.");
+    }
+  }
+  return Int32Array.from(array);
 }
 
 function inferredDenominator(flux: Float64Array) {
@@ -186,6 +200,141 @@ function requireLength(
   }
 }
 
+function requireArray<T>(
+  name: string,
+  array: T | undefined,
+): T {
+  if (array === undefined) {
+    throw new Error(`The archive is missing the required ${name} array.`);
+  }
+  return array;
+}
+
+function requireFinite(name: string, array: Float64Array) {
+  for (const value of array) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Array ${name} contains a non-finite value.`);
+    }
+  }
+}
+
+function validateStateArrays(
+  flux: Float64Array,
+  energy: Float64Array,
+  band: Int32Array,
+) {
+  if (!flux.length) {
+    throw new Error("The NPZ archive has no spectral states.");
+  }
+  requireFinite("state_flux", flux);
+  requireFinite("state_energy", energy);
+  let start = 0;
+  while (start < flux.length) {
+    if (flux[start] <= 0 || flux[start] >= 1) {
+      throw new Error("state_flux values must lie strictly between 0 and 1.");
+    }
+    if (start > 0 && flux[start] < flux[start - 1] - 1e-10) {
+      throw new Error("state_flux groups must be in ascending order.");
+    }
+    let end = start + 1;
+    while (end < flux.length && Math.abs(flux[end] - flux[start]) < 1e-10) {
+      end += 1;
+    }
+    for (let index = start; index < end; index += 1) {
+      if (band[index] !== index - start) {
+        throw new Error(
+          "state_band must enumerate each flux group from zero in energy order.",
+        );
+      }
+      if (index > start && energy[index] < energy[index - 1]) {
+        throw new Error(
+          "state_energy must be ascending inside every flux group.",
+        );
+      }
+    }
+    start = end;
+  }
+}
+
+function validateGapArrays(
+  stateFlux: Float64Array,
+  stateEnergy: Float64Array,
+  gapFlux: Float64Array,
+  gapEnergy: Float64Array,
+  gap: Float64Array,
+  dos: Float64Array,
+) {
+  requireFinite("gap_flux", gapFlux);
+  requireFinite("gap_energy", gapEnergy);
+  requireFinite("gap", gap);
+  requireFinite("integrated_dos", dos);
+  const stateGroups = new Map<string, { start: number; end: number }>();
+  let stateStart = 0;
+  while (stateStart < stateFlux.length) {
+    let stateEnd = stateStart + 1;
+    while (
+      stateEnd < stateFlux.length
+      && Math.abs(stateFlux[stateEnd] - stateFlux[stateStart]) < 1e-10
+    ) {
+      stateEnd += 1;
+    }
+    stateGroups.set(stateFlux[stateStart].toPrecision(12), {
+      start: stateStart,
+      end: stateEnd,
+    });
+    stateStart = stateEnd;
+  }
+  let previousFlux = -Infinity;
+  let previousDos = -Infinity;
+  for (let index = 0; index < gapFlux.length; index += 1) {
+    const currentFlux = gapFlux[index];
+    if (currentFlux < previousFlux - 1e-10) {
+      throw new Error("gap_flux groups must be in ascending order.");
+    }
+    if (Math.abs(currentFlux - previousFlux) >= 1e-10) {
+      previousDos = -Infinity;
+    }
+    if (gap[index] < -1e-10) {
+      throw new Error("Gap widths cannot be negative.");
+    }
+    if (dos[index] <= 0 || dos[index] >= 1 || dos[index] <= previousDos) {
+      throw new Error(
+        "integrated_dos must increase strictly between zero and one per flux.",
+      );
+    }
+    const group = stateGroups.get(currentFlux.toPrecision(12));
+    if (!group) {
+      throw new Error("Each gap_flux value must match a spectral-state flux.");
+    }
+    const count = group.end - group.start;
+    const upper = Math.round(dos[index] * count);
+    if (
+      upper < 1
+      || upper >= count
+      || Math.abs(dos[index] - upper / count) > 1e-7
+    ) {
+      throw new Error(
+        "integrated_dos does not identify a valid gap in its state group.",
+      );
+    }
+    const lowerEnergy = stateEnergy[group.start + upper - 1];
+    const upperEnergy = stateEnergy[group.start + upper];
+    const expectedGap = upperEnergy - lowerEnergy;
+    const expectedMidpoint = (lowerEnergy + upperEnergy) / 2;
+    const tolerance = 1e-8 * Math.max(1, Math.abs(expectedMidpoint));
+    if (
+      Math.abs(gap[index] - expectedGap) > tolerance
+      || Math.abs(gapEnergy[index] - expectedMidpoint) > tolerance
+    ) {
+      throw new Error(
+        "Gap widths or midgap energies contradict the spectral states.",
+      );
+    }
+    previousFlux = currentFlux;
+    previousDos = dos[index];
+  }
+}
+
 export interface NpzImportSummary {
   view: "butterfly" | "wannier";
   parameters: ScientificParameters;
@@ -198,6 +347,12 @@ export function restoreNpzBytes(
   filename = "spectrum.npz",
 ): NpzImportSummary {
   const { arrays, metadata } = parseNpzArchive(bytes);
+  if (
+    metadata !== undefined
+    && metadata.schema !== "hofstadter-interactive/1"
+  ) {
+    throw new Error("The NPZ archive uses an unsupported schema version.");
+  }
   if (metadata?.view === "bands" || metadata?.view === "lattice") {
     throw new Error(
       "NPZ loading currently restores butterfly and Wannier sweep archives.",
@@ -206,30 +361,35 @@ export function restoreNpzBytes(
   const view = archiveView(metadata, filename);
   const aliasFlux = asFloat(arrays.get("flux"));
   const aliasEnergy = asFloat(arrays.get("energy"));
-  const stateFlux =
+  const stateFlux = requireArray(
+    "state_flux",
     asFloat(arrays.get("state_flux"))
-    ?? (view === "butterfly" ? aliasFlux : undefined)
-    ?? new Float64Array();
-  const stateEnergy =
+      ?? (view === "butterfly" ? aliasFlux : undefined),
+  );
+  const stateEnergy = requireArray(
+    "state_energy",
     asFloat(arrays.get("state_energy"))
-    ?? (view === "butterfly" ? aliasEnergy : undefined)
-    ?? new Float64Array();
+      ?? (view === "butterfly" ? aliasEnergy : undefined),
+  );
   if (stateFlux.length !== stateEnergy.length) {
     throw new Error(
       "state_flux and state_energy hold different numbers of values.",
     );
   }
   const stateCount = stateFlux.length;
-  const providedBand =
+  const stateBand = requireArray(
+    "state_band",
     asInt(arrays.get("state_band"))
-    ?? (view === "butterfly" ? asInt(arrays.get("band")) : undefined);
-  const providedChern =
+      ?? (view === "butterfly" ? asInt(arrays.get("band")) : undefined),
+  );
+  const stateChern = requireArray(
+    "state_chern",
     asInt(arrays.get("state_chern"))
-    ?? (view === "butterfly" ? asInt(arrays.get("chern")) : undefined);
-  requireLength("state_band", providedBand, stateCount);
-  requireLength("state_chern", providedChern, stateCount);
-  const stateBand = providedBand ?? new Int32Array(stateCount);
-  const stateChern = providedChern ?? new Int32Array(stateCount);
+      ?? (view === "butterfly" ? asInt(arrays.get("chern")) : undefined),
+  );
+  requireLength("state_band", stateBand, stateCount);
+  requireLength("state_chern", stateChern, stateCount);
+  validateStateArrays(stateFlux, stateEnergy, stateBand);
   const derived = deriveGaps(stateFlux, stateEnergy, stateChern);
   const providedGapFlux =
     asFloat(arrays.get("gap_flux"))
@@ -275,19 +435,43 @@ export function restoreNpzBytes(
     ?? (fallbackGap(derived.dos, "integrated_dos") as Float64Array);
   const gapChern = providedGapChern
     ?? (fallbackGap(derived.gapChern, "gap_chern") as Int32Array);
-  if (!stateCount && !gapCount) {
-    throw new Error("The NPZ archive has no plottable sweep data.");
-  }
+  validateGapArrays(
+    stateFlux,
+    stateEnergy,
+    gapFlux,
+    gapEnergy,
+    gap,
+    dos,
+  );
   const parameters = parametersFromMetadata(
     metadata,
     filename,
     stateCount ? stateFlux : gapFlux,
   );
-  const topologyFlag = asInt(arrays.get("topology_available"));
-  const topologyAvailable = topologyFlag
-    ? topologyFlag[0] !== 0
-    : stateChern.some((value) => value !== 0)
-      || gapChern.some((value) => value !== 0);
+  const topologyFlag = requireArray(
+    "topology_available",
+    asInt(arrays.get("topology_available")),
+  );
+  if (
+    topologyFlag.length !== 1
+    || (topologyFlag[0] !== 0 && topologyFlag[0] !== 1)
+  ) {
+    throw new Error(
+      "topology_available must contain exactly one 0 or 1 value.",
+    );
+  }
+  const topologyAvailable = topologyFlag[0] === 1;
+  if (
+    !topologyAvailable
+    && (
+      stateChern.some((value) => value !== 0)
+      || gapChern.some((value) => value !== 0)
+    )
+  ) {
+    throw new Error(
+      "Topology-unavailable archives cannot contain non-zero Chern labels.",
+    );
+  }
   const requestId = `npz-${Date.now().toString(36)}`;
   const chunk: ButterflyChunk = {
     requestId,
@@ -334,5 +518,8 @@ export function restoreNpzBytes(
 }
 
 export async function restoreNpzFile(file: File) {
+  if (file.size > MAX_NPZ_FILE_BYTES) {
+    throw new Error("The NPZ archive is larger than the 64 MB import limit.");
+  }
   return restoreNpzBytes(new Uint8Array(await file.arrayBuffer()), file.name);
 }

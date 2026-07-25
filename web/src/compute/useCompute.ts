@@ -150,7 +150,11 @@ class ComputeScheduler {
     this.cancelRequested = false;
     if (next.latticeKey) resultCache.expectLattice(next.latticeKey);
     if (next.bandsKey) resultCache.expectBands(next.bandsKey);
-    if (next.geometryKey) resultCache.expectGeometry(next.geometryKey);
+    if (next.geometryKey) {
+      resultCache.expectGeometry(next.geometryKey);
+    } else {
+      resultCache.clearGeometryExpectation();
+    }
     if (next.topologyKey) resultCache.expectTopology(next.topologyKey);
     if (next.dispersionKey) {
       resultCache.expectDispersion(next.dispersionKey);
@@ -171,11 +175,26 @@ class ComputeScheduler {
       if (clamped !== store.selectedBand) store.setSelectedBand(clamped);
     }
 
-    if (
-      this.active?.kind === "butterfly"
-      && this.active.key !== next.sweepKey
-    ) {
-      void engine.cancel(this.active.requestId);
+    if (this.active) {
+      const expectedKey =
+        this.active.kind === "butterfly"
+          ? next.sweepKey
+          : this.active.kind === "bands"
+            ? next.bandsKey
+            : this.active.kind === "lattice"
+              ? next.latticeKey
+              : this.active.kind === "geometry"
+                ? next.geometryKey
+                : this.active.kind === "topology"
+                  ? next.topologyKey
+                  : next.dispersionKey;
+      if (this.active.key !== expectedKey) {
+        if (this.active.kind === "butterfly") {
+          void engine.cancel(this.active.requestId);
+        } else {
+          void engine.abort(this.active.requestId);
+        }
+      }
     }
     void this.pump();
   }
@@ -654,7 +673,13 @@ class ComputeScheduler {
     this.desired = undefined;
     this.cancelRequested = true;
     const activeKind = this.active?.kind;
-    if (this.active) await engine.cancel(this.active.requestId);
+    if (this.active) {
+      if (this.active.kind === "butterfly") {
+        await engine.cancel(this.active.requestId);
+      } else {
+        await engine.abort(this.active.requestId);
+      }
+    }
     return activeKind;
   }
 }
@@ -672,7 +697,13 @@ export function useCompute() {
     (state) => state.geometryColumnsExpanded,
   );
   const selectedBand = useAppStore((state) => state.selectedBand);
+  const selectedMomentum = useAppStore((state) => state.selectedMomentum);
   const bandCutZoom = useAppStore((state) => state.bandCutZoom);
+  const colorMode = useAppStore((state) => state.colorMode);
+  const topologicalPalette = useAppStore(
+    (state) => state.topologicalPalette,
+  );
+  const fluxTransform = useAppStore((state) => state.fluxTransform);
   const geometryRequested =
     surfaceMetric === "gxx"
     || surfaceMetric === "gxy"
@@ -705,8 +736,29 @@ export function useCompute() {
   }, []);
 
   useEffect(() => {
-    writeUrlState(parameters, focus, view);
-  }, [focus, parameters, view]);
+    writeUrlState(parameters, focus, view, {
+      colorMode,
+      topologicalPalette,
+      surfaceMetric,
+      geometryColumnsExpanded,
+      bandCutZoom,
+      selectedBand,
+      selectedMomentum,
+      fluxTransform,
+    });
+  }, [
+    bandCutZoom,
+    colorMode,
+    fluxTransform,
+    focus,
+    geometryColumnsExpanded,
+    parameters,
+    selectedBand,
+    selectedMomentum,
+    surfaceMetric,
+    topologicalPalette,
+    view,
+  ]);
 
   useEffect(() => {
     if (!runtimeReady) return;

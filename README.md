@@ -70,6 +70,13 @@ can be changed with `VITE_BASE_PATH`.
 The latest comprehensive browser, physics, accessibility, and performance
 audit is published with the app at
 [`/audit/HH_INTERACTIVE_AUDIT.html`](public/audit/HH_INTERACTIVE_AUDIT.html).
+`npm run audit:report` regenerates numerical and accessibility evidence, runs
+the complete Playwright project matrix, and always attempts to render the
+result—even when a check fails. Every generated evidence file records the
+generating commit and a SHA-256 fingerprint of all non-ignored source files.
+The content fingerprint is authoritative—unlike a commit ID, it remains valid
+when the generated evidence is committed—so the report builder cannot publish
+an inherited PASS.
 
 Measured on an Apple M-series laptop with Headless Chrome 149, the square
 q=97 workload rendered its first batch in 0.014 s and completed 9,312 states in

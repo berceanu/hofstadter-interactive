@@ -5,7 +5,10 @@ import {
   type ReactNode,
 } from "react";
 import type { LatticeKind } from "../compute/contracts";
-import { useAppStore } from "../state/store";
+import {
+  MAX_HOPPING_MAGNITUDE,
+  useAppStore,
+} from "../state/store";
 import { HelpTooltip } from "./HelpTooltip";
 import { parameterHelp, type HelpCopy } from "./physicsHelp";
 
@@ -226,7 +229,10 @@ export function ParameterPanel() {
             }
           }}
         />
-        <small>comma-separated neighbor amplitudes</small>
+        <small>
+          comma-separated neighbor amplitudes · |tᵢ| ≤{" "}
+          {MAX_HOPPING_MAGNITUDE.toLocaleString()}
+        </small>
       </div>
 
       {parameters.lattice === "custom" && (

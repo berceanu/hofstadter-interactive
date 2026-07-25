@@ -11,6 +11,7 @@ export interface NpzArchive {
 // crafted zip can request before any allocation happens.
 const MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 256;
+export const MAX_NPZ_FILE_BYTES = 64 * 1024 * 1024;
 
 export function encodeNpy(array: NpyArray | Uint8Array) {
   const descriptor = array instanceof Float64Array
@@ -70,6 +71,9 @@ function parseNpyPayload(bytes: Uint8Array): NpyPayload {
     throw new Error("The archive contains an invalid NPY array.");
   }
   const version = bytes[6];
+  if (version !== 1 && version !== 2 && version !== 3) {
+    throw new Error(`Unsupported NPY format version ${version}.`);
+  }
   const prefixLength = version === 1 ? 10 : 12;
   if (bytes.length < prefixLength) {
     throw new Error("The NPY header is truncated.");
@@ -108,7 +112,13 @@ function parseNpyPayload(bytes: Uint8Array): NpyPayload {
     throw new Error("The NPY shape header is invalid.");
   }
   const count = dimensions.length
-    ? dimensions.reduce((product, value) => product * value, 1)
+    ? dimensions.reduce((product, value) => {
+        const next = product * value;
+        if (!Number.isSafeInteger(next)) {
+          throw new Error("The NPY shape is too large.");
+        }
+        return next;
+      }, 1)
     : 1;
   return {
     descriptor,
@@ -255,10 +265,19 @@ export function parseNpzArchive(bytes: Uint8Array): NpzArchive {
   }
   const arrays = new Map<string, NpyArray>();
   let metadata: Record<string, unknown> | undefined;
+  let metadataSeen = false;
   for (const [name, contents] of Object.entries(files)) {
     if (name === "metadata.json") {
+      if (metadataSeen) {
+        throw new Error("The NPZ archive contains duplicate metadata.");
+      }
+      metadataSeen = true;
       metadata = parseMetadataJson(contents);
     } else if (name === "metadata.npy") {
+      if (metadataSeen) {
+        throw new Error("The NPZ archive contains duplicate metadata.");
+      }
+      metadataSeen = true;
       const payload = parseNpyPayload(contents);
       metadata = parseMetadataJson(payload.bytes.subarray(0, payload.count));
     } else if (name.endsWith(".npy")) {

@@ -22,7 +22,11 @@ _geometry_base_cache: dict[str, Any] | None = None
 _dispersion_surface_cache: dict[str, Any] | None = None
 _GEOMETRY_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
 _DISPERSION_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
+_MAX_BAND_WORKING_BYTES = 192 * 1024 * 1024
+_MAX_GEOMETRY_WORKING_BYTES = 256 * 1024 * 1024
+_MAX_SWEEP_EIGENVALUE_COST = 8_000_000_000
 _WILSON_PHASE_STEP_LIMIT = 0.95 * np.pi
+_MAX_HOPPING_MAGNITUDE = 1_000_000.0
 
 
 def _normalized_custom_basis(parameters: dict[str, Any]) -> np.ndarray:
@@ -128,6 +132,35 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
     denominator = int(parameters.get("q", 31))
     if denominator < 1 or gcd(numerator, denominator) != 1:
         raise ValueError("nphi must be a coprime fraction.")
+    hopping = [
+        float(value) for value in parameters.get("hoppings", [1.0])
+    ]
+    if not hopping or not all(np.isfinite(value) for value in hopping):
+        raise ValueError("Hopping amplitudes must be finite numbers.")
+    if any(abs(value) > _MAX_HOPPING_MAGNITUDE for value in hopping):
+        raise ValueError(
+            "Hopping amplitudes must have magnitude at most 1,000,000."
+        )
+    canonical_honeycomb_or_kagome = (
+        float(parameters.get("alpha", 1.0)) == 1.0
+        and int(theta[0]) == 1
+        and int(theta[1]) == 3
+    )
+    specialized = (
+        len(hopping) == 1
+        and (
+            lattice in {"square", "triangular"}
+            or (
+                lattice in {"honeycomb", "kagome"}
+                and canonical_honeycomb_or_kagome
+            )
+        )
+    )
+    if not specialized and not any(value != 0.0 for value in hopping):
+        raise ValueError(
+            "General-lattice Hamiltonians require at least one non-zero "
+            "hopping amplitude."
+        )
     model_type = _CustomHofstadter if lattice == "custom" else Hofstadter
     custom_arguments = (
         {"custom_basis": _normalized_custom_basis(parameters)}
@@ -138,7 +171,7 @@ def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
         numerator,
         denominator,
         a0=float(parameters.get("a", 1.0)),
-        t=[float(value) for value in parameters.get("hoppings", [1.0])],
+        t=hopping,
         lat=lattice,
         alpha=float(parameters.get("alpha", 1.0)),
         theta=(int(theta[0]), int(theta[1])),
@@ -169,6 +202,62 @@ def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
         base, _ = butterfly_functions.chern(model.p, model.q)
         return np.asarray(base, dtype=np.int32), True
     return np.zeros(band_count, dtype=np.int32), False
+
+
+def _eigenvector_grid_bytes(
+    band_count: int,
+    samples: int,
+    vector_grids: int,
+) -> int:
+    """Conservatively estimate resident render-grid array storage."""
+
+    eigenvector_bytes = (
+        vector_grids * band_count * band_count * samples * samples * 16
+    )
+    scalar_grid_bytes = 5 * band_count * samples * samples * 8
+    return eigenvector_bytes + scalar_grid_bytes
+
+
+def _guard_sweep_resources(model: Hofstadter, band_count: int) -> None:
+    """Reject a full fixed-q sweep whose cubic eigensolve cost is unsafe."""
+
+    estimated_cost = band_count ** 3 * max(1, model.q - 1)
+    if estimated_cost > _MAX_SWEEP_EIGENVALUE_COST:
+        raise ValueError(
+            "This flux sweep exceeds the browser computation budget "
+            f"({band_count} bands at q={model.q}). Reduce q or the basis size."
+        )
+
+
+def _guard_grid_resources(
+    band_count: int,
+    samples: int,
+    *,
+    geometry: bool,
+) -> None:
+    """Reject dense eigenvector grids before NumPy allocates them."""
+
+    vector_grids = 3 if geometry else 1
+    required = _eigenvector_grid_bytes(
+        band_count,
+        samples,
+        vector_grids,
+    )
+    limit = (
+        _MAX_GEOMETRY_WORKING_BYTES
+        if geometry
+        else _MAX_BAND_WORKING_BYTES
+    )
+    if required <= limit:
+        return
+    kind = "Quantum geometry" if geometry else "The band surface"
+    required_mib = required / (1024 * 1024)
+    limit_mib = limit / (1024 * 1024)
+    raise ValueError(
+        f"{kind} needs about {required_mib:.0f} MiB for "
+        f"{band_count} bands on a {samples}×{samples} grid, above the "
+        f"{limit_mib:.0f} MiB browser budget. Reduce q or the basis size."
+    )
 
 
 def _gap_hall_labels(p: int, q: int) -> tuple[np.ndarray, np.ndarray]:
@@ -489,6 +578,9 @@ def compute_butterfly_batch(
     gap_fluxes: list[np.ndarray] = []
     gap_energies: list[np.ndarray] = []
     topology_available = True
+    preview_model = _model(parameters, 1)
+    preview_band_count = int(preview_model.unit_cell()[0])
+    _guard_sweep_resources(preview_model, preview_band_count)
 
     for p in range(max(1, int(p_start)), min(q, int(p_end))):
         if gcd(p, q) != 1:
@@ -560,6 +652,7 @@ def compute_bands(parameters: dict[str, Any]) -> dict[str, Any]:
         reciprocal,
         symmetry_points,
     ) = model.unit_cell()
+    _guard_grid_resources(band_count, samples, geometry=False)
     values = np.empty((band_count, samples, samples), dtype=np.float64)
     vectors = np.empty(
         (band_count, band_count, samples, samples), dtype=np.complex128
@@ -1020,6 +1113,7 @@ def compute_geometry(parameters: dict[str, Any]) -> dict[str, Any]:
     if not np.isfinite(band_gap_threshold) or band_gap_threshold < 0:
         band_gap_threshold = 0.01
     band_count, _, _, reciprocal, symmetry_points = model.unit_cell()
+    _guard_grid_resources(band_count, samples, geometry=True)
     cache_key = _band_grid_key(parameters, samples)
     cached_base = (
         _geometry_base_cache

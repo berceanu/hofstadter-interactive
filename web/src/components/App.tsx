@@ -385,6 +385,10 @@ function WorkspacePanel({
   const bandCutZoom = useAppStore((state) => state.bandCutZoom);
   const setFocus = useAppStore((state) => state.setFocus);
   const colorMode = useAppStore((state) => state.colorMode);
+  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
+  const geometryColumnsExpanded = useAppStore(
+    (state) => state.geometryColumnsExpanded,
+  );
   const cache = useResultCache();
   const currentTopology =
     cache.topologyKey
@@ -410,7 +414,19 @@ function WorkspacePanel({
       ? cache.geometry
       : undefined;
   const [transparentArt, setTransparentArt] = useState(false);
-  const exportsDisabled = exportsPending(id, parameters, cache);
+  const geometryRequested =
+    id === "bands"
+    && (
+      surfaceMetric === "gxx"
+      || surfaceMetric === "gxy"
+      || geometryColumnsExpanded
+    );
+  const exportsDisabled = exportsPending(
+    id,
+    parameters,
+    cache,
+    geometryRequested,
+  );
 
   return (
     <section
@@ -531,9 +547,17 @@ function WorkspacePanel({
 function WorkspaceDashboard() {
   const root = useRef<HTMLElement>(null);
   const parameters = useAppStore((state) => state.parameters);
+  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
+  const geometryColumnsExpanded = useAppStore(
+    (state) => state.geometryColumnsExpanded,
+  );
   const cache = useResultCache();
+  const geometryRequested =
+    surfaceMetric === "gxx"
+    || surfaceMetric === "gxy"
+    || geometryColumnsExpanded;
   const exportsDisabled = views.some(({ id }) =>
-    exportsPending(id, parameters, cache)
+    exportsPending(id, parameters, cache, id === "bands" && geometryRequested)
   );
   return (
     <main className="single-workspace" ref={root} data-workspace>
@@ -624,6 +648,10 @@ function FocusedView({ view }: { view: ViewKind }) {
   const parameters = useAppStore((state) => state.parameters);
   const selectedBand = useAppStore((state) => state.selectedBand);
   const bandCutZoom = useAppStore((state) => state.bandCutZoom);
+  const surfaceMetric = useAppStore((state) => state.surfaceMetric);
+  const geometryColumnsExpanded = useAppStore(
+    (state) => state.geometryColumnsExpanded,
+  );
   const cache = useResultCache();
   const currentTopology =
     cache.topologyKey
@@ -655,7 +683,19 @@ function FocusedView({ view }: { view: ViewKind }) {
     [cache.butterfly],
   );
   const help = resultHelp[view];
-  const exportsDisabled = exportsPending(view, parameters, cache);
+  const geometryRequested =
+    view === "bands"
+    && (
+      surfaceMetric === "gxx"
+      || surfaceMetric === "gxy"
+      || geometryColumnsExpanded
+    );
+  const exportsDisabled = exportsPending(
+    view,
+    parameters,
+    cache,
+    geometryRequested,
+  );
 
   return (
     <main className="workspace focused-workspace">

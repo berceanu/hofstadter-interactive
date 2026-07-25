@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Adversarial audit remediation
 
+Whole-codebase follow-up:
+
+- Replace pickle-backed native saves with a versioned primitive-only NPZ
+  schema loaded with ``allow_pickle=False``. Legacy files require the explicit
+  ``--trust-legacy-pickle`` conversion option; regression coverage proves the
+  default loader does not execute a malicious pickle.
+- Reject browser workloads that exceed conservative sweep, band-grid, or
+  geometry working-set budgets before allocating large arrays. Obsolete
+  synchronous worker jobs now terminate and recreate the worker, while
+  butterfly batches retain cooperative cancellation.
+- Correct plot axes and surface copy to label the upstream raw energy ``E``
+  instead of claiming ``E/t₁`` normalization.
+- Keep ``--help`` usable in NumPy-only installations by delaying optional CLI
+  imports until after argument parsing, and direct command users to the
+  ``[cli]`` extra when plotting dependencies are absent.
+- Harden browser NPZ import with a pre-read 64 MB file cap, exact required
+  arrays and topology flag, finite and integer checks, state ordering and
+  energy/gap consistency validation, safe shape arithmetic, supported NPY
+  versions, and duplicate-metadata rejection.
+- Export the six-field lattice-link contract (endpoints, neighbor shell, and
+  amplitude) instead of stepping those records as four-field coordinates.
+- Clear abandoned quantum-geometry expectations and gate exports only on
+  geometry that the current view actually requests.
+- Bound hopping magnitudes at both UI and Python boundaries and report an
+  explicit domain error for all-zero general-lattice Hamiltonians instead of
+  leaking a NumPy eigensolver failure.
+- Extend shared URLs to round-trip color mode, palette, surface metric,
+  geometry-table state, selected band and momentum, cut zoom, and butterfly
+  zoom/pan.
+- Add a named, focusable Wilson-row slider with Arrow, Page, Home, and End
+  controls, linked to the same momentum state used by pointer interaction.
+- Generate browser audit evidence from the live Playwright matrix, fingerprint
+  every evidence file to the exact source tree, reject stale inputs, and
+  render an honest failing report when any audit command fails.
+- Reduce Pages CI to job-scoped permissions, disable persisted checkout
+  credentials, pin actions to exact commits, and enforce high-severity npm
+  advisory failures before publishing.
+
 Scientific correctness:
 
 - Fix the cumulative Hall labels (`tᵣ`) shown on Wannier gaps for every even

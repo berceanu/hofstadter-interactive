@@ -37,7 +37,7 @@ Using pip:
 
 .. code:: console
 
-    pip install HofstadterTools
+    pip install 'HofstadterTools[cli]'
 
 Using conda:
 
@@ -45,7 +45,14 @@ Using conda:
 
     conda install conda-forge::HofstadterTools
 
-You can now access the ``band_structure`` and ``butterfly`` programs from any location. The ``band_structure`` program evaluates the Hofstadter band structure at fixed flux density :math:`n_\phi=p/q` for a range of momenta :math:`\mathbf{k}=(k_x,k_y)`, whereas the ``butterfly`` program evaluates the energy spectrum at fixed momentum :math:`\mathbf{k}=\mathbf{0}` for a range of :math:`n_\phi=p/q`, where :math:`p` and :math:`q` are coprime integers.
+The ``cli`` extra installs the plotting and terminal-table dependencies used
+by the ``band_structure`` and ``butterfly`` programs. The base package keeps
+only NumPy and is suitable for using the numerical API or the browser wheel.
+The ``band_structure`` program evaluates the Hofstadter band structure at
+fixed flux density :math:`n_\phi=p/q` for a range of momenta
+:math:`\mathbf{k}=(k_x,k_y)`, whereas the ``butterfly`` program evaluates the
+energy spectrum at fixed momentum :math:`\mathbf{k}=\mathbf{0}` for a range
+of :math:`n_\phi=p/q`, where :math:`p` and :math:`q` are coprime integers.
 
 .. code:: console
 
@@ -81,6 +88,17 @@ You can now access the ``band_structure`` and ``butterfly`` programs from any lo
 
 Voilà! You have just plotted the Hofstadter band structure for nearest-neighbor hopping on the square lattice at flux density :math:`n_\phi=1/4`, together with the corresponding butterfly spectrum at :math:`q=97`. You can append ``--help`` to either of these programs to view the list of options. Alternatively, you can explore the `gallery <https://hofstadter.tools/gallery.html>`__ and `code reference <https://hofstadter.tools/_autosummary/functions.html>`__ to see what HofstadterTools has to offer.
 
+Saved-data security
+-------------------
+
+New native ``.npz`` saves use a versioned, primitive-only schema and load with
+NumPy pickling disabled. Older HofstadterTools archives contain Python pickle
+objects and therefore must be treated like executable code. A trusted legacy
+band-structure archive can be opened with ``--trust-legacy-pickle``;
+programmatic callers can use ``load_data(..., trusted_legacy=True)`` and then
+``save_data`` to migrate either archive type. Never opt in for an untrusted or
+downloaded file.
+
 Installation
 ------------
 
@@ -101,11 +119,13 @@ Using pip
     user@domain:any/path$ python3 -m venv my_env
     user@domain:any/path$ source path/to/my_env/bin/activate
 
-2. Install HofstadterTools from PyPI.
+2. Install HofstadterTools from PyPI. Add the ``cli`` extra if you want the
+   ``band_structure`` and ``butterfly`` commands.
 
 .. code:: console
 
     (my_env) user@domain:any/path$ pip install HofstadterTools
+    (my_env) user@domain:any/path$ pip install 'HofstadterTools[cli]'
 
 3. [Optional] Upgrade an existing HofstadterTools installation.
 

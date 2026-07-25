@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { auditProvenance } from "./audit-provenance.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const checks = [
@@ -58,6 +59,9 @@ const results = checks.map(([name, foreground, background]) => ({
   pass: contrast(foreground, background) >= 4.5,
 }));
 const output = {
+  schema: "hofstadter-interactive/accessibility-audit/1",
+  generated_at: new Date().toISOString(),
+  provenance: auditProvenance(root),
   status:
     results.every((result) => result.pass) && !missing.length
       ? "pass"

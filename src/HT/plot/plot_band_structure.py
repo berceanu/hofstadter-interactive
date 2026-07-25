@@ -12,7 +12,12 @@ def main():
 
     # load the file
     filename = new_args['load']
-    model, old_args, data = fu.load_data("band_structure", filename, True)
+    model, old_args, data = fu.load_data(
+        "band_structure",
+        filename,
+        True,
+        trusted_legacy=new_args["trust_legacy_pickle"],
+    )
 
     # overwrite old_args with new_args parameters, if specified
     old_args['save'] = new_args['save']

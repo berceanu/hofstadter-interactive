@@ -58,6 +58,8 @@ export interface ExportCacheState {
   lattice?: unknown;
   latticeKey?: string;
   latticeStale: boolean;
+  geometry?: unknown;
+  geometryKey?: string;
   geometryStale: boolean;
 }
 
@@ -68,6 +70,7 @@ export function exportsPending(
   view: ViewKind,
   parameters: ScientificParameters,
   cache: ExportCacheState,
+  geometryRequested = false,
 ) {
   if (view === "butterfly" || view === "wannier") {
     return cache.butterflyKey !== sweepComputationKey(parameters)
@@ -77,7 +80,14 @@ export function exportsPending(
   if (view === "bands") {
     return cache.bandsKey !== bandComputationKey(parameters)
       || cache.bandsStale
-      || cache.geometryStale
+      || (
+        geometryRequested
+        && (
+          cache.geometryKey !== bandComputationKey(parameters)
+          || cache.geometryStale
+          || !cache.geometry
+        )
+      )
       || !cache.bands;
   }
   return cache.latticeKey !== latticeComputationKey(parameters)

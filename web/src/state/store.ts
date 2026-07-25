@@ -24,6 +24,11 @@ export interface SelectedPoint {
   gap?: number;
 }
 
+export interface SelectedMomentum {
+  source: "path" | "wilson";
+  fraction: number;
+}
+
 interface AppState {
   parameters: ScientificParameters;
   view: ViewKind;
@@ -44,6 +49,7 @@ interface AppState {
   geometryColumnsExpanded: boolean;
   bandCutZoom: number;
   selectedBand: number;
+  selectedMomentum: SelectedMomentum;
   selectedPoint?: SelectedPoint;
   progress: RuntimeProgress;
   activeRequestId?: string;
@@ -73,6 +79,7 @@ interface AppState {
   setGeometryColumnsExpanded: (expanded: boolean) => void;
   setBandCutZoom: (zoom: number) => void;
   setSelectedBand: (band: number) => void;
+  setSelectedMomentum: (selection: SelectedMomentum) => void;
   setSelectedPoint: (point?: SelectedPoint) => void;
   setProgress: (progress: RuntimeProgress) => void;
   setActiveRequest: (requestId?: string) => void;
@@ -81,6 +88,14 @@ interface AppState {
     parameters: Partial<ScientificParameters> & {
       view?: ViewKind;
       focus?: FocusKind;
+      colorMode?: ButterflyColorMode;
+      topologicalPalette?: TopologicalPalette;
+      surfaceMetric?: SurfaceMetric;
+      geometryColumnsExpanded?: boolean;
+      bandCutZoom?: number;
+      selectedBand?: number;
+      selectedMomentum?: SelectedMomentum;
+      fluxTransform?: { zoom: number; pan: number };
     },
   ) => void;
 }
@@ -103,6 +118,8 @@ export const defaultParameters: ScientificParameters = {
   ],
 };
 
+export const MAX_HOPPING_MAGNITUDE = 1_000_000;
+
 function boundedInteger(value: number, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(value)));
@@ -111,6 +128,18 @@ function boundedInteger(value: number, fallback: number, min: number, max: numbe
 function boundedNumber(value: number, fallback: number, min: number, max: number) {
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, value));
+}
+
+export function normalizeFluxTransform(
+  transform: { zoom: number; pan: number },
+  fallback = { zoom: 1, pan: 0 },
+) {
+  const zoom = boundedNumber(transform.zoom, fallback.zoom, 1, 18);
+  const panLimit = Math.max(0, 1 - 1 / zoom);
+  return {
+    zoom,
+    pan: boundedNumber(transform.pan, fallback.pan, -panLimit, panLimit),
+  };
 }
 
 function greatestCommonDivisor(first: number, second: number) {
@@ -217,6 +246,9 @@ export function normalizeParameters(
   });
   const hoppings = candidate.hoppings
     .filter(Number.isFinite)
+    .map((value) =>
+      Math.max(-MAX_HOPPING_MAGNITUDE, Math.min(MAX_HOPPING_MAGNITUDE, value))
+    )
     .slice(0, 5);
 
   return {
@@ -276,6 +308,7 @@ export const useAppStore = create<AppState>((set) => ({
   geometryColumnsExpanded: false,
   bandCutZoom: 1,
   selectedBand: 0,
+  selectedMomentum: { source: "path", fraction: 0 },
   progress: {
     phase: "idle",
     fraction: 0,
@@ -317,7 +350,10 @@ export const useAppStore = create<AppState>((set) => ({
       selectedPoint: undefined,
     })),
   setWorkspaceWide: (workspaceWide) => set({ workspaceWide }),
-  setFluxTransform: (fluxTransform) => set({ fluxTransform }),
+  setFluxTransform: (fluxTransform) =>
+    set({
+      fluxTransform: normalizeFluxTransform(fluxTransform),
+    }),
   incrementComputeCounter: (kind) =>
     set((state) => ({
       computeCounters: {
@@ -334,12 +370,35 @@ export const useAppStore = create<AppState>((set) => ({
     set({
       bandCutZoom: boundedNumber(bandCutZoom, 1, 1, 64),
     }),
-  setSelectedBand: (selectedBand) => set({ selectedBand }),
+  setSelectedBand: (selectedBand) =>
+    set({
+      selectedBand: boundedInteger(selectedBand, 0, 0, 10_000),
+    }),
+  setSelectedMomentum: (selectedMomentum) =>
+    set({
+      selectedMomentum: {
+        source:
+          selectedMomentum.source === "wilson" ? "wilson" : "path",
+        fraction: boundedNumber(selectedMomentum.fraction, 0, 0, 1),
+      },
+    }),
   setSelectedPoint: (selectedPoint) => set({ selectedPoint }),
   setProgress: (progress) => set({ progress }),
   setActiveRequest: (activeRequestId) => set({ activeRequestId }),
   setRuntimeReady: (runtimeReady) => set({ runtimeReady }),
-  hydrate: ({ view, focus, ...parameters }) =>
+  hydrate: ({
+    view,
+    focus,
+    colorMode,
+    topologicalPalette,
+    surfaceMetric,
+    geometryColumnsExpanded,
+    bandCutZoom,
+    selectedBand,
+    selectedMomentum,
+    fluxTransform,
+    ...parameters
+  }) =>
     set((state) => ({
       view:
         focus && focus !== "workspace"
@@ -347,5 +406,32 @@ export const useAppStore = create<AppState>((set) => ({
           : view ?? state.view,
       focus: focus ?? view ?? state.focus,
       parameters: normalizeParameters({ ...state.parameters, ...parameters }),
+      colorMode: colorMode ?? state.colorMode,
+      topologicalPalette: topologicalPalette ?? state.topologicalPalette,
+      surfaceMetric: surfaceMetric ?? state.surfaceMetric,
+      geometryColumnsExpanded:
+        geometryColumnsExpanded ?? state.geometryColumnsExpanded,
+      bandCutZoom: boundedNumber(
+        bandCutZoom ?? state.bandCutZoom,
+        state.bandCutZoom,
+        1,
+        64,
+      ),
+      selectedBand: boundedInteger(
+        selectedBand ?? state.selectedBand,
+        state.selectedBand,
+        0,
+        10_000,
+      ),
+      selectedMomentum: selectedMomentum
+        ? {
+            source:
+              selectedMomentum.source === "wilson" ? "wilson" : "path",
+            fraction: boundedNumber(selectedMomentum.fraction, 0, 0, 1),
+          }
+        : state.selectedMomentum,
+      fluxTransform: fluxTransform
+        ? normalizeFluxTransform(fluxTransform, state.fluxTransform)
+        : state.fluxTransform,
     })),
 }));

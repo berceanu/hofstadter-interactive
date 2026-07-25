@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from math import gcd
 from pathlib import Path
+import subprocess
 
 import numpy as np
 
@@ -67,6 +69,15 @@ def polygon_area(vertices: np.ndarray) -> float:
 
 
 def main() -> None:
+    provenance = json.loads(
+        subprocess.run(
+            ["node", "scripts/audit-provenance.mjs"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    )
     families = []
     for lattice, hoppings, period, theta, alpha in CASES:
         values = parameters(lattice, hoppings, period, theta, alpha)
@@ -89,11 +100,16 @@ def main() -> None:
                 np.linalg.eigvalsh(model.hamiltonian(np.array([0.0, 0.0])))
             )
             reference_energy.extend(energy)
-            base, _ = chern(numerator, 7)
-            if energy.size == 7:
+            expected_fast_topology = (
+                lattice == "square"
+                and len(hoppings) == 1
+                and hoppings[0] != 0
+                and period == 1
+                and energy.size == 7
+            )
+            if expected_fast_topology:
+                base, _ = chern(numerator, 7)
                 reference_chern.extend(base)
-            elif energy.size == 14 and len(hoppings) == 1:
-                reference_chern.extend(base + list(reversed(base)))
             else:
                 reference_chern.extend([0] * energy.size)
 
@@ -147,7 +163,7 @@ def main() -> None:
                         )
                     )
                 ),
-                "adapter_chern_exact": bool(
+                "adapter_topology_contract_exact": bool(
                     np.array_equal(
                         butterfly["chern"],
                         np.asarray(reference_chern, dtype=np.int32),
@@ -273,6 +289,9 @@ def main() -> None:
         )
 
     result = {
+        "schema": "hofstadter-interactive/physics-audit/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "provenance": provenance,
         "status": "pass",
         "analytic_square_dispersion_max_error": analytic_error,
         "honeycomb_invariants": {
@@ -321,8 +340,10 @@ def main() -> None:
             failures.append(f"{family['lattice']} butterfly finite")
         if family["adapter_max_energy_error"] > 1e-10:
             failures.append(f"{family['lattice']} adapter energy parity")
-        if not family["adapter_chern_exact"]:
-            failures.append(f"{family['lattice']} adapter Chern parity")
+        if not family["adapter_topology_contract_exact"]:
+            failures.append(
+                f"{family['lattice']} fast-topology availability contract"
+            )
         if not family["finite_energy_and_berry"]:
             failures.append(f"{family['lattice']} band finiteness")
         if not family["group_cherns_stable_7_to_11"]:

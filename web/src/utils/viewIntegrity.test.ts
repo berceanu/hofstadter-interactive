@@ -24,6 +24,8 @@ function readyCache(
     lattice: {},
     latticeKey: latticeComputationKey(parameters),
     latticeStale: false,
+    geometry: {},
+    geometryKey: bandComputationKey(parameters),
     geometryStale: false,
   };
 }
@@ -55,6 +57,7 @@ describe("view data integrity", () => {
       ...readyCache(),
       geometryStale: true,
     };
-    expect(exportsPending("bands", defaultParameters, cache)).toBe(true);
+    expect(exportsPending("bands", defaultParameters, cache, true)).toBe(true);
+    expect(exportsPending("bands", defaultParameters, cache, false)).toBe(false);
   });
 });

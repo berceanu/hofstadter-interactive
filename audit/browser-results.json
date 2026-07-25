@@ -1,232 +1,419 @@
 {
-  "status": "pass-after-remediation",
-  "review_verdict": {
-    "honeycomb_decoupled_chain_claim": "refuted",
-    "confirmed_findings_fixed": 14,
-    "summary": "The reported honeycomb failure was a false diagnosis; independent model, coordination, bandwidth, symmetry, and browser checks all pass. The renderer, worker recovery, legends, progressive display, interaction, topology-availability, BZ, Wannier, and linked-momentum findings were confirmed and repaired."
+  "schema": "hofstadter-interactive/browser-audit/1",
+  "generated_at": "2026-07-25T13:25:20.469Z",
+  "provenance": {
+    "source_commit": "73566695594c4131145b77d08e1e32f3725a15a7",
+    "source_tree_sha256": "815c04c4f2e35f213cc7a25320a86b40789055e451643c9e36ebb65120b6d5c2",
+    "source_file_count": 207
   },
-  "friend_claims": [
-    {
-      "claim": "The honeycomb model is simulating decoupled zigzag chains.",
-      "verdict": "refuted",
-      "evidence": "Native Γ eigenvalues are exactly (-3, +3); K and K′ are zero-energy Dirac points; a bulk site has three equal-length nearest-neighbor bonds; q=47 spans [-2.961660, +2.961660] with 4,324 states and visible gaps. The browser lattice contains 133 links for its finite 98-site patch."
-    },
-    {
-      "claim": "The worker can enter an unrecoverable runtime-not-initialized state and wipes valid data.",
-      "verdict": "confirmed and fixed",
-      "evidence": "The engine now classifies lost-runtime/endpoint failures, recreates the worker, reinitializes Pyodide, and retries once. A deterministic unit test forces that exact failure. Completed butterfly, band, and lattice results remain visible until a replacement succeeds."
-    },
-    {
-      "claim": "Resizing can leave axes and one stray WebGL point.",
-      "verdict": "confirmed and fixed",
-      "evidence": "R3F was resetting the orthographic camera to a pixel frustum on resize. CameraSync now owns a manual physical frustum and responds to canvas size. q=97 retained all 9,312 states after resizing to 900 px; the WebGL regression asserts more than 500 non-background pixels."
-    },
-    {
-      "claim": "Butterfly batches do not render progressively.",
-      "verdict": "confirmed root cause and fixed",
-      "evidence": "The same camera reset made streamed points collapse visually. The driven q=97 capture shows 291 rendered states at 3% while computation is still running."
-    },
-    {
-      "claim": "Legends, a current-flux line, and a linked 3D momentum marker are missing.",
-      "verdict": "confirmed and fixed",
-      "evidence": "Energy, Chern (-10 to +10), Wannier gap-size/Hall, and 3D surface scales are present. Every sweep shows the current p/q line. Clicking k=(0.271, 0.500) on the cut moved both the SVG marker and the luminous 3D surface marker."
-    },
-    {
-      "claim": "Interaction and visualization polish is incomplete.",
-      "verdict": "confirmed and fixed",
-      "evidence": "Plain wheel/trackpad zoom works, pan is bounded, drag release does not inspect, double-click and a visible button reset the view, band SVG text cannot be selected, Wannier dot area follows gap width, and q-folded BZs are shown against the ordinary BZ."
-    }
-  ],
+  "status": "pass",
+  "command": "playwright test --reporter=json",
+  "review_verdict": {
+    "confirmed_findings_fixed": 12,
+    "summary": "The browser matrix is generated from the current Playwright run; static screenshots are retained only as historical visual context."
+  },
+  "friend_claims": [],
   "baseline_findings": [
     {
       "severity": "high",
-      "finding": "R3F resize reset the butterfly camera to a pixel-space frustum, collapsing progressive and resized point clouds.",
-      "evidence": "At 900 px the axes remained but the WebGL layer showed one point; incoming state counters continued to grow.",
-      "resolution": "The orthographic camera is manual, synchronized in a layout effect, and explicitly keyed to R3F canvas size."
+      "finding": "Unsafe native pickle archives could execute code.",
+      "resolution": "New saves use a versioned primitive-only NPZ schema; legacy pickle loading requires an explicit trusted-file opt-in."
     },
     {
       "severity": "high",
-      "finding": "A lost Pyodide worker/runtime had no automatic recovery and recomputation cleared the last valid plot.",
-      "evidence": "The failure string matched “The Python runtime is not initialized.”",
-      "resolution": "Recoverable worker failures trigger one clean worker recreation and retry; a retry control remains available and stale results stay visible."
+      "finding": "Large valid browser workloads could exhaust memory or remain uninterruptible.",
+      "resolution": "The adapter rejects oversized sweeps and grids before allocation, and obsolete synchronous jobs terminate and recreate the worker."
     },
     {
       "severity": "high",
-      "finding": "Unsupported fast Diophantine coloring for multi-basis butterfly models was displayed as physical C=0.",
-      "evidence": "Kagome and higher-neighbor honeycomb butterflies received zero-filled topology arrays.",
-      "resolution": "The adapter sends an explicit topology_available contract; the UI disables and labels Chern mode as unavailable and exports blank Chern cells."
-    },
-    {
-      "severity": "medium",
-      "finding": "Dense scientific plots lacked color semantics and linked reference markers.",
-      "resolution": "Added energy, Chern, Hall/gap-width, and surface color scales, a current-flux line, and a linked symmetry-cut/3D momentum marker."
-    },
-    {
-      "severity": "medium",
-      "finding": "Unbounded pan, drag-release inspection, missing reset behavior, and selectable band-axis text made plot interaction brittle.",
-      "resolution": "Pan bounds, drag suppression, plain wheel zoom, double-click/button reset, and SVG selection hygiene are now regression-covered."
-    },
-    {
-      "severity": "medium",
-      "finding": "Wannier gaps had uniform visual weight and large-q magnetic BZ labels collided in a to-scale sliver.",
-      "resolution": "Wannier point area/alpha now scales with gap width; the reciprocal panel leads with the ordinary BZ and overlays the q-folded magnetic BZ with a clear legend."
-    },
-    {
-      "severity": "medium",
-      "finding": "The three-column result deck overflowed the document by 26 px at a 900 px viewport.",
-      "evidence": "documentElement.scrollWidth=926 with innerWidth=900.",
-      "resolution": "The deck switches to a two-column layout below 1120 px and one column below 760 px; the final 900 px document has no horizontal overflow."
+      "finding": "Raw energies were mislabeled as normalized E/t₁.",
+      "resolution": "All spectral and surface labels now state the upstream raw energy E."
     },
     {
       "severity": "high",
-      "finding": "Invalid p/q and zero angle denominators could reach Pyodide.",
-      "resolution": "Central parameter normalization enforces coprime-range scalar bounds before URL writing or computation."
-    },
-    {
-      "severity": "high",
-      "finding": "A reciprocal primitive parallelogram was labeled as the first Brillouin zone and q·a₂ escaped the SVG panel.",
-      "resolution": "The adapter constructs Wigner–Seitz cells for ordinary and magnetic reciprocal lattices; the magnetic real-space cell is a bounded inset."
-    },
-    {
-      "severity": "high",
-      "finding": "Individual Berry/Chern values were shown for touching Kagome and honeycomb bands.",
-      "resolution": "Touching bands use the upstream non-Abelian determinant-link formulation and are labeled as gauge-invariant groups."
+      "finding": "Published audit evidence could remain stale while displaying PASS.",
+      "resolution": "Physics, browser, and accessibility evidence carries a source-tree fingerprint; report generation refuses mismatched inputs and still renders failures."
     },
     {
       "severity": "medium",
-      "finding": "Cancelled computations could later overwrite the terminal cancelled state.",
-      "resolution": "Cancellation is terminal locally and worker bookkeeping is cleared after every request."
+      "finding": "Base Python installs broke CLI help when optional UI packages were absent.",
+      "resolution": "Argument parsing now precedes optional plotting imports, and actual CLI execution names the required cli extra."
+    },
+    {
+      "severity": "medium",
+      "finding": "Lattice CSV links used the wrong record stride.",
+      "resolution": "Link exports now use all six fields: endpoints, neighbor shell, and amplitude."
+    },
+    {
+      "severity": "medium",
+      "finding": "NPZ import accepted incomplete and non-finite physical data.",
+      "resolution": "The importer requires versioned state arrays and an exact topology flag, validates finite/order/range/gap consistency, and checks file size before reading."
+    },
+    {
+      "severity": "medium",
+      "finding": "A cancelled geometry request could leave band exports disabled.",
+      "resolution": "Geometry expectations clear when no longer requested, and export gating only waits for currently requested geometry."
+    },
+    {
+      "severity": "medium",
+      "finding": "All-zero generic hopping and extreme amplitudes reached NumPy failures.",
+      "resolution": "Browser and Python boundaries bound amplitudes and return a clear domain error for undefined all-zero generic models."
+    },
+    {
+      "severity": "medium",
+      "finding": "Shared URLs omitted the active analysis state.",
+      "resolution": "Color, palette, surface metric, geometry table, band, cut zoom, linked momentum, and butterfly transform now round-trip."
+    },
+    {
+      "severity": "low",
+      "finding": "Wilson-row selection was pointer-only.",
+      "resolution": "The Wilson plot exposes a focusable slider with arrow, page, Home, and End keyboard controls."
+    },
+    {
+      "severity": "low",
+      "finding": "The Pages workflow granted broad permissions and trusted mutable action tags.",
+      "resolution": "Jobs now use least-privilege permissions, disable persisted checkout credentials, and pin every action to an exact commit."
     }
   ],
   "final_checks": [
     {
-      "scenario": "honeycomb-native-invariants",
+      "scenario": "app.spec.ts › loads the scientific workspace and keeps state in the URL",
       "status": "pass",
-      "detail": "Γ=(-3,+3), K=K′=(0,0), bulk coordination=3, q47 range=[-2.961660,+2.961660], chiral symmetry error=8.7e-15."
+      "detail": "935 ms across 1 project run(s)."
     },
     {
-      "scenario": "honeycomb-browser-lattice",
+      "scenario": "app.spec.ts › the primary navigation remains usable on a mobile viewport",
       "status": "pass",
-      "detail": "98 sites, 133 rendered bonds, a rhombic two-site primitive cell, ordinary hexagonal BZ, and magnetic BZ."
+      "detail": "454 ms across 1 project run(s)."
     },
     {
-      "scenario": "progressive-butterfly",
+      "scenario": "app.spec.ts › edits the magnetic flux as one canonical p/q pair",
       "status": "pass",
-      "detail": "291 square-lattice q=97 states were visibly rendered at 3% before completion."
+      "detail": "439 ms across 1 project run(s)."
     },
     {
-      "scenario": "responsive-webgl-repaint",
+      "scenario": "app.spec.ts › runs the real Pyodide butterfly computation to completion",
       "status": "pass",
-      "detail": "9,312 q=97 states remained populated after a 900 px resize; automated WebGL readback exceeded 500 foreground pixels."
+      "detail": "2729 ms across 1 project run(s)."
     },
     {
-      "scenario": "current-flux-marker",
+      "scenario": "app.spec.ts › normalizes invalid scientific parameters before computation",
       "status": "pass",
-      "detail": "The sweep axes mark the current p/q and keep the label within the plotting frame."
+      "detail": "2643 ms across 1 project run(s)."
     },
     {
-      "scenario": "chern-color-scale",
+      "scenario": "app.spec.ts › repairs a malicious honeycomb angle before running the spectrum",
       "status": "pass",
-      "detail": "A 21-step Chern scale labels -10, 0, and +10, matching the documented HofstadterTools default magnitude."
+      "detail": "3232 ms across 1 project run(s)."
     },
     {
-      "scenario": "plain-wheel-zoom-and-reset",
+      "scenario": "app.spec.ts › renders a bounded Wigner–Seitz magnetic Brillouin zone",
       "status": "pass",
-      "detail": "A plain wheel event changed physical tick domains without Ctrl; the reset button restored the initial domains."
+      "detail": "2657 ms across 1 project run(s)."
     },
     {
-      "scenario": "wannier-gap-weighting",
+      "scenario": "app.spec.ts › uses gauge-invariant Chern groups for touching bands",
       "status": "pass",
-      "detail": "9,216 q=97 gaps use point area and alpha proportional to gap width, exposing the large Landau-fan trajectories."
+      "detail": "3755 ms across 1 project run(s)."
     },
     {
-      "scenario": "ordinary-and-magnetic-bz",
+      "scenario": "app.spec.ts › keeps cancellation final and exports computed artifacts",
       "status": "pass",
-      "detail": "Honeycomb q=89 shows a readable ordinary hexagonal BZ with the magnetic BZ overlaid and labeled folded ×89."
+      "detail": "6369 ms across 1 project run(s)."
     },
     {
-      "scenario": "linked-band-momentum",
+      "scenario": "app.spec.ts › streams the butterfly progressively and repaints it after a responsive resize",
       "status": "pass",
-      "detail": "Clicking the symmetry cut moved its marker to x=464.789 and updated the surface to k=(0.271,0.500); the 3D marker and drop line are visible."
+      "detail": "14008 ms across 1 project run(s)."
     },
     {
-      "scenario": "surface-colorbar",
+      "scenario": "app.spec.ts › supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend",
       "status": "pass",
-      "detail": "Band 1 E(k) displays its active range [-2.966,-2.902]."
+      "detail": "2888 ms across 1 project run(s)."
     },
     {
-      "scenario": "worker-auto-recovery",
+      "scenario": "app.spec.ts › renders the Avron gap plane with Hall-conductivity segments",
       "status": "pass",
-      "detail": "A forced runtime-not-initialized failure terminated endpoint 1, initialized endpoint 2, and successfully retried computeLattice once."
+      "detail": "3603 ms across 1 project run(s)."
     },
     {
-      "scenario": "stale-result-retention",
+      "scenario": "app.spec.ts › links a clicked symmetry-cut momentum to the 3D surface marker",
       "status": "pass",
-      "detail": "Unit tests verify old butterfly, band, and lattice results survive recompute startup and are replaced only by the first valid new result."
+      "detail": "4093 ms across 1 project run(s)."
     },
     {
-      "scenario": "unsupported-topology-honesty",
+      "scenario": "app.spec.ts › selects thin bands forgivingly and scrubs momentum in real time",
       "status": "pass",
-      "detail": "Kagome q=11 renders 330 energy states and exposes a disabled “Chern unavailable” control rather than physical zero."
+      "detail": "4882 ms across 1 project run(s)."
     },
     {
-      "scenario": "diophantine-relations",
+      "scenario": "app.spec.ts › adapts path detail to linked-cut zoom without recomputing bands",
       "status": "pass",
-      "detail": "Every gap satisfies r=q·s+p·t for p/q=22/89 and 15/47."
+      "detail": "5784 ms across 1 project run(s)."
     },
     {
-      "scenario": "gauge-invariant-band-groups",
+      "scenario": "app.spec.ts › plots branch-safe Wilson phases and links a k2 row to the surface",
       "status": "pass",
-      "detail": "Honeycomb and Kagome grouped Chern values are stable from 7×7 to 11×11 grids and every complete bundle sums to C=0."
+      "detail": "3686 ms across 1 project run(s)."
     },
     {
-      "scenario": "copy-link-and-url-state",
+      "scenario": "app.spec.ts › exports six-field lattice links without corrupting record boundaries",
       "status": "pass",
-      "detail": "Every scientific parameter and active view round-trips through the URL."
+      "detail": "2670 ms across 1 project run(s)."
     },
     {
-      "scenario": "cancellation-and-exports",
+      "scenario": "app.spec.ts › rejects an oversized band grid before allocating it",
       "status": "pass",
-      "detail": "Cancellation stays terminal; CSV, NPZ, and composed WebGL+SVG PNG downloads have deterministic scientific filenames."
+      "detail": "2716 ms across 1 project run(s)."
     },
     {
-      "scenario": "responsive-layouts",
+      "scenario": "app.spec.ts › automatically resolves an aliased q=31 Wilson loop",
       "status": "pass",
-      "detail": "No document overflow at 900 px or 430 px; the 430 px navigation owns its bounded horizontal scroll."
+      "detail": "12450 ms across 1 project run(s)."
     },
     {
-      "scenario": "semantic-accessibility",
+      "scenario": "app.spec.ts › automatically refines q=31 dispersion without detaching the lifted symmetry path",
       "status": "pass",
-      "detail": "Named controls and graphical regions, one H1, complete landmarks, a polite live status region, reduced motion, and AA contrast tokens."
+      "detail": "7257 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › links property-table hover and selection to the band group",
+      "status": "pass",
+      "detail": "3401 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › links symmetry points, both BZ outlines, and the lifted 3D path",
+      "status": "pass",
+      "detail": "3521 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › drags the shared coprime flux cursor without launching another sweep",
+      "status": "pass",
+      "detail": "4281 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › keeps stale workspace plots visible and dimmed during replacement",
+      "status": "pass",
+      "detail": "11284 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › falls back from the workspace to tabs below 1100px",
+      "status": "pass",
+      "detail": "323 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › loads quantum geometry only after the user asks for it",
+      "status": "pass",
+      "detail": "3135 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › exports a clean three-times-scale art PNG",
+      "status": "pass",
+      "detail": "2416 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › marks unsupported fast topology as unavailable instead of physical C = 0",
+      "status": "pass",
+      "detail": "2675 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › switches among the Avron, jet, and red-blue topology palettes",
+      "status": "pass",
+      "detail": "2277 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › morphs the selected energy sheet into an educational BZ torus",
+      "status": "pass",
+      "detail": "3508 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › loads a custom basis through the upstream generic lattice path",
+      "status": "pass",
+      "detail": "2362 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › restores an exported NPZ without launching a replacement sweep",
+      "status": "pass",
+      "detail": "4195 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › loads the scientific workspace and keeps state in the URL",
+      "status": "pass",
+      "detail": "906 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › the primary navigation remains usable on a mobile viewport",
+      "status": "pass",
+      "detail": "368 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › edits the magnetic flux as one canonical p/q pair",
+      "status": "pass",
+      "detail": "413 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › runs the real Pyodide butterfly computation to completion",
+      "status": "pass",
+      "detail": "3230 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › normalizes invalid scientific parameters before computation",
+      "status": "pass",
+      "detail": "2659 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › repairs a malicious honeycomb angle before running the spectrum",
+      "status": "pass",
+      "detail": "3322 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › renders a bounded Wigner–Seitz magnetic Brillouin zone",
+      "status": "pass",
+      "detail": "2677 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › uses gauge-invariant Chern groups for touching bands",
+      "status": "pass",
+      "detail": "4341 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › keeps cancellation final and exports computed artifacts",
+      "status": "pass",
+      "detail": "6597 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › streams the butterfly progressively and repaints it after a responsive resize",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › renders the Avron gap plane with Hall-conductivity segments",
+      "status": "pass",
+      "detail": "3491 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › links a clicked symmetry-cut momentum to the 3D surface marker",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › selects thin bands forgivingly and scrubs momentum in real time",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › adapts path detail to linked-cut zoom without recomputing bands",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › plots branch-safe Wilson phases and links a k2 row to the surface",
+      "status": "pass",
+      "detail": "5068 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › exports six-field lattice links without corrupting record boundaries",
+      "status": "pass",
+      "detail": "2700 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › rejects an oversized band grid before allocating it",
+      "status": "pass",
+      "detail": "3171 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › automatically resolves an aliased q=31 Wilson loop",
+      "status": "pass",
+      "detail": "12978 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › automatically refines q=31 dispersion without detaching the lifted symmetry path",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › links property-table hover and selection to the band group",
+      "status": "pass",
+      "detail": "2915 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › links symmetry points, both BZ outlines, and the lifted 3D path",
+      "status": "pass",
+      "detail": "4827 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › drags the shared coprime flux cursor without launching another sweep",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › keeps stale workspace plots visible and dimmed during replacement",
+      "status": "pass-skipped",
+      "detail": "Explicitly skipped by the project matrix."
+    },
+    {
+      "scenario": "app.spec.ts › falls back from the workspace to tabs below 1100px",
+      "status": "pass",
+      "detail": "350 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › loads quantum geometry only after the user asks for it",
+      "status": "pass",
+      "detail": "4321 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › exports a clean three-times-scale art PNG",
+      "status": "pass",
+      "detail": "3048 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › marks unsupported fast topology as unavailable instead of physical C = 0",
+      "status": "pass",
+      "detail": "2687 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › switches among the Avron, jet, and red-blue topology palettes",
+      "status": "pass",
+      "detail": "3352 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › morphs the selected energy sheet into an educational BZ torus",
+      "status": "pass",
+      "detail": "5867 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › loads a custom basis through the upstream generic lattice path",
+      "status": "pass",
+      "detail": "2952 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › restores an exported NPZ without launching a replacement sweep",
+      "status": "pass",
+      "detail": "5263 ms across 1 project run(s)."
     }
   ],
   "additional_checks": [
     {
-      "scenario": "native-and-browser-test-matrix",
+      "scenario": "generated-browser-matrix",
       "status": "pass",
-      "detail": "Full pytest, Vitest, Pyodide parity, desktop/mobile Playwright, physics, accessibility, and production-build checks all pass."
-    },
-    {
-      "scenario": "browser-console",
-      "status": "pass-with-upstream-note",
-      "detail": "No application exceptions occurred; React Three Fiber emits only the known upstream THREE.Clock deprecation warning."
-    },
-    {
-      "scenario": "hofstadtertools-doc-alignment",
-      "status": "pass",
-      "detail": "The app follows the documented Γ-point butterfly sweep, ±10 Chern default, gap-width Wannier sizing, 1×q MUC convention, and Γ/K/M/K′ reference paths."
+      "detail": "64 Playwright specifications recorded; 0 failed."
     }
   ],
   "limitations": [
     {
-      "check": "Manual keyboard focus-order certification",
+      "check": "Manual assistive-technology session",
       "result": "not claimed",
-      "reason": "Semantic native controls, accessible names, focus-outline CSS, reduced-motion handling, and desktop/mobile Playwright interaction were verified; a separate assistive-technology session was not run."
+      "reason": "Automated semantics, keyboard interaction, contrast, reduced motion, and responsive browser behavior are covered; a separate screen-reader session was not run."
     },
     {
-      "check": "Upstream React Three Fiber deprecation",
-      "result": "non-blocking",
-      "reason": "THREE.Clock is deprecated upstream; no application error or rendering fault accompanies the warning."
+      "check": "Live dependency advisory services",
+      "result": "separate control",
+      "reason": "The source audit does not replace continuously refreshed npm and Python advisory scans."
     }
   ]
 }

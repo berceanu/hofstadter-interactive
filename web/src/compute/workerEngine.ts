@@ -101,13 +101,22 @@ export class PyodideWorkerEngine implements ComputeEngine {
     return this.restart();
   }
 
-  private async withRecovery<T>(operation: () => Promise<T>): Promise<T> {
+  private async withRecovery<T>(
+    operation: () => Promise<T>,
+    requestId?: string,
+  ): Promise<T> {
     await this.ensureReady();
     try {
       return await operation();
     } catch (error: unknown) {
+      if (requestId && this.cancelled.has(requestId)) {
+        throw new Error("cancelled");
+      }
       if (!this.isRecoverable(error)) throw error;
       await this.restart();
+      if (requestId && this.cancelled.has(requestId)) {
+        throw new Error("cancelled");
+      }
       return operation();
     }
   }
@@ -119,7 +128,10 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<number> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     const started = performance.now();
     const batchSize = parameters.q >= 71 ? 3 : 4;
     try {
@@ -129,14 +141,16 @@ export class PyodideWorkerEngine implements ComputeEngine {
         }
         const pEnd = Math.min(parameters.q, pStart + batchSize);
         const progress = (pEnd - 1) / (parameters.q - 1);
-        const chunk = await this.withRecovery(() =>
-          this.remote.computeButterflyBatch(
-            requestId,
-            parameters,
-            pStart,
-            pEnd,
-            progress,
-          ),
+        const chunk = await this.withRecovery(
+          () =>
+            this.remote.computeButterflyBatch(
+              requestId,
+              parameters,
+              pStart,
+              pEnd,
+              progress,
+            ),
+          requestId,
         );
         if (this.cancelled.has(requestId)) {
           throw new Error("cancelled");
@@ -161,10 +175,14 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<BandResult> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     try {
-      const result = await this.withRecovery(() =>
-        this.remote.computeBands(requestId, parameters),
+      const result = await this.withRecovery(
+        () => this.remote.computeBands(requestId, parameters),
+        requestId,
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;
@@ -187,16 +205,21 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<TopologyResult> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     try {
-      const result = await this.withRecovery(() =>
-        this.remote.computeTopology(
-          requestId,
-          parameters,
-          groups,
-          samplesX,
-          samplesY,
-        ),
+      const result = await this.withRecovery(
+        () =>
+          this.remote.computeTopology(
+            requestId,
+            parameters,
+            groups,
+            samplesX,
+            samplesY,
+          ),
+        requestId,
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;
@@ -218,15 +241,20 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<DispersionResult> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     try {
-      const result = await this.withRecovery(() =>
-        this.remote.computeDispersion(
-          requestId,
-          parameters,
-          surfaceSamples,
-          pathSamplesPerSegment,
-        ),
+      const result = await this.withRecovery(
+        () =>
+          this.remote.computeDispersion(
+            requestId,
+            parameters,
+            surfaceSamples,
+            pathSamplesPerSegment,
+          ),
+        requestId,
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;
@@ -246,10 +274,14 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<LatticeResult> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     try {
-      const result = await this.withRecovery(() =>
-        this.remote.computeLattice(requestId, parameters),
+      const result = await this.withRecovery(
+        () => this.remote.computeLattice(requestId, parameters),
+        requestId,
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;
@@ -269,10 +301,14 @@ export class PyodideWorkerEngine implements ComputeEngine {
   ): Promise<GeometryResult> {
     await this.ensureReady();
     this.cancelled.delete(requestId);
-    await this.withRecovery(() => this.remote.clearCancellation(requestId));
+    await this.withRecovery(
+      () => this.remote.clearCancellation(requestId),
+      requestId,
+    );
     try {
-      const result = await this.withRecovery(() =>
-        this.remote.computeGeometry(requestId, parameters),
+      const result = await this.withRecovery(
+        () => this.remote.computeGeometry(requestId, parameters),
+        requestId,
       );
       if (this.cancelled.has(requestId)) throw new Error("cancelled");
       return result;
@@ -292,6 +328,17 @@ export class PyodideWorkerEngine implements ComputeEngine {
       await this.remote.cancel(requestId);
     } catch {
       // Cancellation is already terminal locally if the worker disappeared.
+    }
+  }
+
+  async abort(requestId: string): Promise<void> {
+    this.cancelled.add(requestId);
+    try {
+      await this.restart();
+    } catch {
+      // A failed restart leaves a fresh, uninitialized endpoint. The next
+      // computation will retry initialization and report any persistent
+      // runtime failure through the normal scheduler path.
     }
   }
 

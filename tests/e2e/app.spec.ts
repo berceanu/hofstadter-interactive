@@ -115,6 +115,9 @@ test(
       { timeout: 30_000 },
     );
     await expect(page.getByText(/states$/)).toContainText("42 states");
+    const plot = page.locator('[data-flux-plot="butterfly"]');
+    await expect(plot.locator(".plot-axes")).toContainText("energy E");
+    await expect(plot.locator(".plot-axes")).not.toContainText("t₁");
   },
 );
 
@@ -530,7 +533,7 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
     "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=17",
   );
   await waitForBandGrid(page);
-  const wilson = page.getByRole("img", {
+  const wilson = page.getByRole("group", {
     name: "Wilson eigenphase versus normalized k2",
   });
   await expect(wilson).toHaveAttribute("data-wilson-points", "21");
@@ -547,6 +550,52 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
     "0.750",
   );
   await expect(wilson.locator(".wilson-marker")).toHaveCount(1);
+  const rowSlider = page.getByRole("slider", {
+    name: "Selected Wilson-loop momentum row",
+  });
+  await rowSlider.focus();
+  await page.keyboard.press("Home");
+  await expect(rowSlider).toHaveAttribute("aria-valuenow", "0");
+  await page.keyboard.press("End");
+  await expect(rowSlider).toHaveAttribute("aria-valuenow", "20");
+  await expect(page).toHaveURL(/mom=wilson%3A1/);
+});
+
+test("exports six-field lattice links without corrupting record boundaries", async ({
+  page,
+}) => {
+  await page.goto(
+    "/?focus=lattice&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1",
+  );
+  await expect(page.locator(".runtime-status")).toContainText(
+    "Lattice geometry ready",
+    { timeout: 30_000 },
+  );
+  const renderedLinks = await page.locator(".hopping-links line").count();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "CSV", exact: true }).click();
+  const download = await downloadPromise;
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const csv = await readFile(path!, "utf8");
+  const linkSection = csv
+    .split("link,x1,y1,x2,y2,neighbor_shell,amplitude\n")[1]
+    .split("\n\n")[0]
+    .trim()
+    .split("\n");
+  expect(linkSection).toHaveLength(renderedLinks);
+  expect(linkSection.every((row) => row.split(",").length === 7)).toBe(true);
+});
+
+test("rejects an oversized band grid before allocating it", async ({ page }) => {
+  test.setTimeout(45_000);
+  await page.goto(
+    "/?focus=bands&lat=custom&p=1&q=199&t=1&alpha=1&tn=1&td=3&period=1&basis=0%3A0%3B0.5%3A0%3B0%3A0.5%3B0.5%3A0.5",
+  );
+  await expect(page.locator(".runtime-status")).toContainText(
+    "above the 192 MiB browser budget",
+    { timeout: 30_000 },
+  );
 });
 
 test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
@@ -560,7 +609,7 @@ test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
   });
   await page.getByLabel("Band", { exact: true }).selectOption("15");
 
-  const wilson = page.getByRole("img", {
+  const wilson = page.getByRole("group", {
     name: "Wilson eigenphase versus normalized k2",
   });
   await expect(wilson).toHaveAttribute(

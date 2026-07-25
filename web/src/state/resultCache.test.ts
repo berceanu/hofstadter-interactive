@@ -154,4 +154,19 @@ describe("ResultCache stale-result behavior", () => {
     );
     expect(cache.getSnapshot().dispersionStale).toBe(false);
   });
+
+  it("clears a stale geometry expectation when geometry is no longer requested", () => {
+    const cache = new ResultCache();
+    cache.expectGeometry("geometry-a");
+    cache.setGeometry(
+      { requestId: "geometry-result-a" } as never,
+      "geometry-a",
+    );
+    cache.expectGeometry("geometry-b");
+    expect(cache.getSnapshot().geometryStale).toBe(true);
+
+    cache.clearGeometryExpectation();
+    expect(cache.getSnapshot().geometryStale).toBe(false);
+    expect(cache.isExpected("geometry", "geometry-b")).toBe(false);
+  });
 });

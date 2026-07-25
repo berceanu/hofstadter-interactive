@@ -1,27 +1,28 @@
 # --- external imports
 import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 from math import gcd
-import matplotlib.ticker as ticker
-from fractions import Fraction
-from matplotlib.ticker import MaxNLocator
 from copy import deepcopy
-import matplotlib.colors as mcolors
-import os
 import sys
 import warnings
 # --- internal imports
 from HT.functions import arguments as fa
 from HT.functions import butterfly as fb
 from HT.functions import utility as fu
-from HT.functions import plotting as fp
 from HT.models.hofstadter import Hofstadter
 
 
 def main():
     # parse input arguments
     args = fa.parse_input_arguments("butterfly", "Plot the Hofstadter Butterfly.")
+    try:
+        import matplotlib.pyplot as plt
+        from tqdm import tqdm
+        from HT.functions import plotting as fp
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "The butterfly command needs the optional CLI dependencies. "
+            "Install them with: pip install 'HofstadterTools[cli]'"
+        ) from exc
     # general arguments
     mod = args['model']
     a = args['a']

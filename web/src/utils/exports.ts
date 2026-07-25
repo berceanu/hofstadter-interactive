@@ -288,15 +288,17 @@ export function exportCsv(
       );
     }
     rows.push("");
-    rows.push("link,x1,y1,x2,y2");
-    for (let index = 0; index < lattice.links.length / 4; index += 1) {
+    rows.push("link,x1,y1,x2,y2,neighbor_shell,amplitude");
+    for (let index = 0; index < lattice.links.length / 6; index += 1) {
       rows.push(
         [
           index,
-          lattice.links[index * 4],
-          lattice.links[index * 4 + 1],
-          lattice.links[index * 4 + 2],
-          lattice.links[index * 4 + 3],
+          lattice.links[index * 6],
+          lattice.links[index * 6 + 1],
+          lattice.links[index * 6 + 2],
+          lattice.links[index * 6 + 3],
+          lattice.links[index * 6 + 4],
+          lattice.links[index * 6 + 5],
         ].join(","),
       );
     }

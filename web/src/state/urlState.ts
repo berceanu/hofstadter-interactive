@@ -1,10 +1,18 @@
 import type {
+  ButterflyColorMode,
   FocusKind,
   LatticeKind,
   ScientificParameters,
+  SurfaceMetric,
+  TopologicalPalette,
   ViewKind,
 } from "../compute/contracts";
-import { defaultParameters, normalizeParameters } from "./store";
+import {
+  defaultParameters,
+  normalizeFluxTransform,
+  normalizeParameters,
+  type SelectedMomentum,
+} from "./store";
 
 const lattices = new Set<LatticeKind>([
   "square",
@@ -22,6 +30,44 @@ const focuses = new Set<FocusKind>([
   "lattice",
   "bands",
 ]);
+const colorModes = new Set<ButterflyColorMode>([
+  "spectral",
+  "chern",
+  "gaps",
+]);
+const palettes = new Set<TopologicalPalette>([
+  "avron",
+  "jet",
+  "red-blue",
+]);
+const surfaceMetrics = new Set<SurfaceMetric>([
+  "energy",
+  "berry",
+  "gxx",
+  "gxy",
+]);
+
+export interface UrlAnalysisState {
+  colorMode: ButterflyColorMode;
+  topologicalPalette: TopologicalPalette;
+  surfaceMetric: SurfaceMetric;
+  geometryColumnsExpanded: boolean;
+  bandCutZoom: number;
+  selectedBand: number;
+  selectedMomentum: SelectedMomentum;
+  fluxTransform: { zoom: number; pan: number };
+}
+
+const defaultAnalysisState: UrlAnalysisState = {
+  colorMode: "spectral",
+  topologicalPalette: "avron",
+  surfaceMetric: "energy",
+  geometryColumnsExpanded: false,
+  bandCutZoom: 1,
+  selectedBand: 0,
+  selectedMomentum: { source: "path", fraction: 0 },
+  fluxTransform: { zoom: 1, pan: 0 },
+};
 
 function boundedInteger(
   params: URLSearchParams,
@@ -49,6 +95,19 @@ function parseCustomBasis(value: string | null) {
     )
     .slice(0, 4);
   return points.length ? points : defaultParameters.customBasis;
+}
+
+function boundedFloat(
+  params: URLSearchParams,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const value = Number(params.get(key));
+  return Number.isFinite(value)
+    ? Math.max(min, Math.min(max, value))
+    : fallback;
 }
 
 export function parseUrlState(search = window.location.search) {
@@ -96,6 +155,13 @@ export function parseUrlState(search = window.location.search) {
     a: 1,
   });
   const workspaceView = query.get("view") as ViewKind;
+  const requestedColorMode = query.get("cm") as ButterflyColorMode;
+  const requestedPalette = query.get("pal") as TopologicalPalette;
+  const requestedMetric = query.get("metric") as SurfaceMetric;
+  const momentumParts = (query.get("mom") ?? "").split(":");
+  const momentumSource =
+    momentumParts[0] === "wilson" ? "wilson" : "path";
+  const momentumFraction = Number(momentumParts[1]);
   return {
     ...parameters,
     focus,
@@ -104,16 +170,39 @@ export function parseUrlState(search = window.location.search) {
         ? workspaceView
         : "butterfly"
       : focus,
+    colorMode: colorModes.has(requestedColorMode)
+      ? requestedColorMode
+      : defaultAnalysisState.colorMode,
+    topologicalPalette: palettes.has(requestedPalette)
+      ? requestedPalette
+      : defaultAnalysisState.topologicalPalette,
+    surfaceMetric: surfaceMetrics.has(requestedMetric)
+      ? requestedMetric
+      : defaultAnalysisState.surfaceMetric,
+    geometryColumnsExpanded: query.get("geom") === "1",
+    bandCutZoom: boundedFloat(query, "cutz", 1, 1, 64),
+    selectedBand: boundedInteger(query, "band", 0, 0, 10_000),
+    selectedMomentum: {
+      source: momentumSource,
+      fraction: Number.isFinite(momentumFraction)
+        ? Math.max(0, Math.min(1, momentumFraction))
+        : 0,
+    },
+    fluxTransform: normalizeFluxTransform({
+      zoom: boundedFloat(query, "fxz", 1, 1, 18),
+      pan: boundedFloat(query, "fxp", 0, -1, 1),
+    }),
   } satisfies Partial<ScientificParameters> & {
     focus: FocusKind;
     view: ViewKind;
-  };
+  } & UrlAnalysisState;
 }
 
 export function writeUrlState(
   parameters: ScientificParameters,
   focus: FocusKind,
   view?: ViewKind,
+  analysis: UrlAnalysisState = defaultAnalysisState,
 ) {
   const normalized = normalizeParameters(parameters);
   const query = new URLSearchParams();
@@ -138,6 +227,19 @@ export function writeUrlState(
         .join(";"),
     );
   }
+  query.set("ui", "1");
+  query.set("cm", analysis.colorMode);
+  query.set("pal", analysis.topologicalPalette);
+  query.set("metric", analysis.surfaceMetric);
+  query.set("geom", analysis.geometryColumnsExpanded ? "1" : "0");
+  query.set("band", String(Math.max(0, Math.trunc(analysis.selectedBand))));
+  query.set("cutz", String(analysis.bandCutZoom));
+  query.set(
+    "mom",
+    `${analysis.selectedMomentum.source}:${analysis.selectedMomentum.fraction}`,
+  );
+  query.set("fxz", String(analysis.fluxTransform.zoom));
+  query.set("fxp", String(analysis.fluxTransform.pan));
   const next = `${window.location.pathname}?${query.toString()}`;
   window.history.replaceState(null, "", next);
 }

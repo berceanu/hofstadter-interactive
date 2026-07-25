@@ -230,5 +230,6 @@ export interface ComputeEngine {
     parameters: ScientificParameters,
   ): Promise<LatticeResult>;
   cancel(requestId: string): Promise<void>;
+  abort(requestId: string): Promise<void>;
   dispose(): void;
 }

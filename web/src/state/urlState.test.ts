@@ -105,4 +105,45 @@ describe("URL scientific state", () => {
       ],
     });
   });
+
+  it("round-trips the active analysis and linked momentum selection", () => {
+    writeUrlState(defaultParameters, "workspace", "bands", {
+      colorMode: "gaps",
+      topologicalPalette: "red-blue",
+      surfaceMetric: "gxy",
+      geometryColumnsExpanded: true,
+      bandCutZoom: 8,
+      selectedBand: 4,
+      selectedMomentum: { source: "wilson", fraction: 0.375 },
+      fluxTransform: { zoom: 6, pan: -0.25 },
+    });
+    expect(parseUrlState(window.location.search)).toMatchObject({
+      focus: "workspace",
+      view: "bands",
+      colorMode: "gaps",
+      topologicalPalette: "red-blue",
+      surfaceMetric: "gxy",
+      geometryColumnsExpanded: true,
+      bandCutZoom: 8,
+      selectedBand: 4,
+      selectedMomentum: { source: "wilson", fraction: 0.375 },
+      fluxTransform: { zoom: 6, pan: -0.25 },
+    });
+  });
+
+  it("bounds hostile analysis-state values", () => {
+    expect(
+      parseUrlState(
+        "?cm=unknown&pal=unknown&metric=unknown&band=-4&cutz=999&mom=wilson:4&fxz=-1&fxp=9",
+      ),
+    ).toMatchObject({
+      colorMode: "spectral",
+      topologicalPalette: "avron",
+      surfaceMetric: "energy",
+      selectedBand: 0,
+      bandCutZoom: 64,
+      selectedMomentum: { source: "wilson", fraction: 1 },
+      fluxTransform: { zoom: 1, pan: 0 },
+    });
+  });
 });

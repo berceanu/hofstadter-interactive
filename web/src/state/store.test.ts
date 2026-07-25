@@ -10,6 +10,7 @@ describe("scientific parameter invariants", () => {
     useAppStore.setState({
       parameters: { ...defaultParameters },
       bandCutZoom: 1,
+      selectedMomentum: { source: "path", fraction: 0 },
       computeCounters: {
         sweeps: 0,
         bands: 0,
@@ -115,6 +116,14 @@ describe("scientific parameter invariants", () => {
     expect(normalized.theta).toEqual([1, 2]);
   });
 
+  it("bounds hopping amplitudes before they reach the eigensolver", () => {
+    const normalized = normalizeParameters({
+      ...defaultParameters,
+      hoppings: [1e308, -1e308, Number.NaN],
+    });
+    expect(normalized.hoppings).toEqual([1_000_000, -1_000_000]);
+  });
+
   it("switches among upstream-compatible topology palettes", () => {
     useAppStore.getState().setTopologicalPalette("red-blue");
     expect(useAppStore.getState().topologicalPalette).toBe("red-blue");
@@ -150,5 +159,28 @@ describe("scientific parameter invariants", () => {
     );
     expect(useAppStore.getState().computeCounters.dispersion).toBe(0);
     expect(useAppStore.getState().computeCounters.topology).toBe(0);
+  });
+
+  it("hydrates bounded shareable analysis state", () => {
+    useAppStore.getState().hydrate({
+      colorMode: "chern",
+      topologicalPalette: "jet",
+      surfaceMetric: "gxx",
+      geometryColumnsExpanded: true,
+      bandCutZoom: 12,
+      selectedBand: 7,
+      selectedMomentum: { source: "wilson", fraction: 0.6 },
+      fluxTransform: { zoom: 5, pan: -0.2 },
+    });
+    expect(useAppStore.getState()).toMatchObject({
+      colorMode: "chern",
+      topologicalPalette: "jet",
+      surfaceMetric: "gxx",
+      geometryColumnsExpanded: true,
+      bandCutZoom: 12,
+      selectedBand: 7,
+      selectedMomentum: { source: "wilson", fraction: 0.6 },
+      fluxTransform: { zoom: 5, pan: -0.2 },
+    });
   });
 });

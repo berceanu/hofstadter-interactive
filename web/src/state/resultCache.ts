@@ -285,6 +285,14 @@ export class ResultCache {
     this.expectedGeometryKey ??= key;
   }
 
+  clearGeometryExpectation() {
+    if (this.expectedGeometryKey === undefined && !this.snapshot.geometryStale) {
+      return;
+    }
+    this.expectedGeometryKey = undefined;
+    this.publish({ geometryStale: false });
+  }
+
   setGeometry(result: GeometryResult, key = result.requestId) {
     this.remember(this.geometryResults, key, result);
     if (this.expectedGeometryKey !== key) return;

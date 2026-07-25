@@ -31,6 +31,12 @@ def parse_input_arguments(program, description):
 
     if program in ["plot_band_structure", "plot_butterfly"]:
         general.add_argument("-load", type=str, required=True, help="filename of data to load")
+        general.add_argument(
+            "--trust-legacy-pickle",
+            default=False,
+            action="store_true",
+            help="load a pre-safe-format archive only when its source is trusted",
+        )
     if program in ["band_structure", "butterfly"]:
         models = ["Hofstadter"]
         general.add_argument("-mod", "--model", type=str, default="Hofstadter", choices=models, help="name of model")
@@ -54,6 +60,12 @@ def parse_input_arguments(program, description):
         band_structure.add_argument("-nphi", nargs=2, type=int, default=[1, 4], help="flux density")
         band_structure.add_argument("-bgt", type=float, default=0.01, help="band gap threshold")
         band_structure.add_argument("-load", type=str, default=False, help="filename of data to load")
+        band_structure.add_argument(
+            "--trust-legacy-pickle",
+            default=False,
+            action="store_true",
+            help="load a pre-safe-format archive only when its source is trusted",
+        )
         band_structure.add_argument("-topo", "--topology", default=False, action='store_true', help="print the topology columns")
         band_structure.add_argument("-geom", "--geometry", default=False, action='store_true', help="print the basic quantum geometry columns")
         columns = ["band", "group", "isolated", "width", "gap", "gap_width", "std_B", "C", "std_g", "av_gxx", "std_gxx", "av_gxy", "std_gxy", "T", "D"]

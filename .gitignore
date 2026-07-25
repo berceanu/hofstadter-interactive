@@ -4,6 +4,7 @@ node_modules/
 dist/
 playwright-report/
 test-results/
+audit/browser-playwright-results.json
 public/python/*.whl
 public/pyodide/
 *.tsbuildinfo

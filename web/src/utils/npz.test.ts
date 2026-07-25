@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { resultCache } from "../state/resultCache";
 import { defaultParameters, useAppStore } from "../state/store";
 import { createNpzArchive, encodeNpy, parseNpzArchive } from "./npz";
-import { restoreNpzBytes } from "./npzImport";
+import { restoreNpzBytes, restoreNpzFile } from "./npzImport";
 
 function npyWithHeader(header: string, payload: Uint8Array) {
   const dictionary = new TextEncoder().encode(`${header}\n`);
@@ -121,7 +121,9 @@ describe("NPZ spectrum archives", () => {
       {
         state_flux: new Float64Array([1 / 3, 1 / 3, 2 / 3]),
         state_energy: new Float64Array([-1, 0, 1]),
+        state_band: new Int32Array([0, 1, 0]),
         state_chern: new Int32Array([5, -5]),
+        topology_available: new Int32Array([1]),
       },
       { schema: "hofstadter-interactive/1", view: "butterfly" },
     );
@@ -135,6 +137,9 @@ describe("NPZ spectrum archives", () => {
       {
         state_flux: new Float64Array([1 / 7, 2 / 7]),
         state_energy: new Float64Array([-1, 1]),
+        state_band: new Int32Array([0, 0]),
+        state_chern: new Int32Array([0, 0]),
+        topology_available: new Int32Array([0]),
       },
       {
         schema: "hofstadter-interactive/1",
@@ -152,6 +157,9 @@ describe("NPZ spectrum archives", () => {
       {
         state_flux: new Float64Array([1 / 7, 2 / 7]),
         state_energy: new Float64Array([-1, 1]),
+        state_band: new Int32Array([0, 0]),
+        state_chern: new Int32Array([0, 0]),
+        topology_available: new Int32Array([0]),
       },
       { schema: "hofstadter-interactive/1", view: "butterfly" },
     );
@@ -181,7 +189,7 @@ describe("NPZ spectrum archives", () => {
         gap: new Float64Array([2, 2]),
         gap_chern: new Int32Array([1, -1]),
         integrated_dos: new Float64Array([1 / 3, 2 / 3]),
-        topology_available: new Int32Array([0]),
+        topology_available: new Int32Array([1]),
       },
       {
         schema: "hofstadter-interactive/1",
@@ -206,7 +214,118 @@ describe("NPZ spectrum archives", () => {
     });
     expect(resultCache.getSnapshot().butterfly).toMatchObject({
       complete: true,
-      chunks: [{ topologyAvailable: false }],
+      chunks: [{ topologyAvailable: true }],
     });
+  });
+
+  it("rejects missing band and Chern arrays instead of inventing zeros", () => {
+    const base = {
+      state_flux: new Float64Array([1 / 3, 1 / 3, 1 / 3]),
+      state_energy: new Float64Array([-1, 0, 1]),
+      topology_available: new Int32Array([0]),
+    };
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(base, {
+          schema: "hofstadter-interactive/1",
+          view: "butterfly",
+        }),
+      )
+    ).toThrow(/state_band/);
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(
+          { ...base, state_band: new Int32Array([0, 1, 2]) },
+          {
+            schema: "hofstadter-interactive/1",
+            view: "butterfly",
+          },
+        ),
+      )
+    ).toThrow(/state_chern/);
+  });
+
+  it("requires an exact topology flag", () => {
+    const arrays = {
+      state_flux: new Float64Array([1 / 3, 1 / 3, 1 / 3]),
+      state_energy: new Float64Array([-1, 0, 1]),
+      state_band: new Int32Array([0, 1, 2]),
+      state_chern: new Int32Array([0, 0, 0]),
+    };
+    const metadata = {
+      schema: "hofstadter-interactive/1",
+      view: "butterfly",
+    };
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(
+          { ...arrays, topology_available: new Int32Array() },
+          metadata,
+        ),
+      )
+    ).toThrow(/exactly one 0 or 1/);
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(
+          { ...arrays, topology_available: new Int32Array([2]) },
+          metadata,
+        ),
+      )
+    ).toThrow(/exactly one 0 or 1/);
+  });
+
+  it("rejects non-finite and physically unordered state data", () => {
+    const metadata = {
+      schema: "hofstadter-interactive/1",
+      view: "butterfly",
+    };
+    const base = {
+      state_flux: new Float64Array([1 / 3, 1 / 3, 1 / 3]),
+      state_band: new Int32Array([0, 1, 2]),
+      state_chern: new Int32Array([0, 0, 0]),
+      topology_available: new Int32Array([0]),
+    };
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(
+          { ...base, state_energy: new Float64Array([-1, Number.NaN, 1]) },
+          metadata,
+        ),
+      )
+    ).toThrow(/non-finite/);
+    expect(() =>
+      restoreNpzBytes(
+        createNpzArchive(
+          { ...base, state_energy: new Float64Array([-1, 1, 0]) },
+          metadata,
+        ),
+      )
+    ).toThrow(/ascending/);
+  });
+
+  it("rejects an unsupported schema and oversized file before reading it", async () => {
+    const archive = createNpzArchive(
+      {
+        state_flux: new Float64Array([1 / 3]),
+        state_energy: new Float64Array([0]),
+        state_band: new Int32Array([0]),
+        state_chern: new Int32Array([0]),
+        topology_available: new Int32Array([0]),
+      },
+      { schema: "hofstadter-interactive/99", view: "butterfly" },
+    );
+    expect(() => restoreNpzBytes(archive)).toThrow(/unsupported schema/);
+
+    let read = false;
+    const oversized = {
+      name: "huge.npz",
+      size: 64 * 1024 * 1024 + 1,
+      arrayBuffer: async () => {
+        read = true;
+        return new ArrayBuffer(0);
+      },
+    } as File;
+    await expect(restoreNpzFile(oversized)).rejects.toThrow(/64 MB/);
+    expect(read).toBe(false);
   });
 });

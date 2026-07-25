@@ -81,4 +81,25 @@ describe("PyodideWorkerEngine recovery", () => {
     expect(second.remote.initialize).toHaveBeenCalledOnce();
     expect(second.remote.computeLattice).toHaveBeenCalledOnce();
   });
+
+  it("terminates and reinitializes the worker for an uninterruptible abort", async () => {
+    const first = endpoint({
+      initialize: vi.fn().mockResolvedValue(undefined),
+    });
+    const second = endpoint({
+      initialize: vi.fn().mockResolvedValue(undefined),
+    });
+    const endpoints = [first, second];
+    const engine = new PyodideWorkerEngine(() => {
+      const next = endpoints.shift();
+      if (!next) throw new Error("Unexpected extra worker restart");
+      return next;
+    });
+
+    await engine.initialize(() => undefined);
+    await engine.abort("bands-obsolete");
+
+    expect(first.worker.terminate).toHaveBeenCalledOnce();
+    expect(second.remote.initialize).toHaveBeenCalledOnce();
+  });
 });

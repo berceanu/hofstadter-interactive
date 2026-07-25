@@ -692,6 +692,82 @@ def test_non_coprime_flux_is_rejected():
         )
 
 
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {
+            "lattice": "bravais",
+            "hoppings": [0.0],
+            "theta": [67, 180],
+        },
+        {
+            "lattice": "custom",
+            "hoppings": [0.0],
+            "theta": [1, 3],
+        },
+        {
+            "lattice": "square",
+            "hoppings": [0.0, 0.0],
+            "theta": [1, 2],
+        },
+    ],
+)
+def test_all_zero_generic_hoppings_are_rejected_cleanly(parameters):
+    with pytest.raises(ValueError, match="at least one non-zero"):
+        compute_butterfly_batch(
+            {
+                **parameters,
+                "period": 1,
+                "alpha": 1.0,
+                "p": 1,
+                "q": 3,
+            },
+            1,
+            2,
+        )
+
+
+def test_extreme_hopping_is_rejected_before_linalg():
+    with pytest.raises(ValueError, match="magnitude at most"):
+        compute_bands(
+            {
+                "lattice": "square",
+                "hoppings": [1e308],
+                "period": 1,
+                "theta": [1, 2],
+                "alpha": 1.0,
+                "p": 1,
+                "q": 3,
+                "samples": 7,
+            }
+        )
+
+
+def test_oversized_browser_workloads_are_rejected_before_allocation():
+    parameters = {
+        "lattice": "custom",
+        "hoppings": [1.0],
+        "period": 1,
+        "theta": [1, 3],
+        "alpha": 1.0,
+        "p": 1,
+        "q": 199,
+        "samples": 7,
+        "customBasis": [
+            [0.0, 0.0],
+            [0.5, 0.0],
+            [0.0, 0.5],
+            [0.5, 0.5],
+        ],
+    }
+    with pytest.raises(ValueError, match="flux sweep exceeds"):
+        compute_butterfly_batch(parameters, 1, 2)
+    with pytest.raises(ValueError, match="band surface.*browser budget"):
+        compute_bands(parameters)
+    with pytest.raises(ValueError, match="Quantum geometry.*browser budget"):
+        compute_geometry(parameters)
+
+
 def test_symmetry_path_reaches_the_closing_tick():
     result = compute_bands(
         {

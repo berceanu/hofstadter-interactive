@@ -1,4 +1,11 @@
 {
+  "schema": "hofstadter-interactive/physics-audit/1",
+  "generated_at": "2026-07-25T13:23:08.422040+00:00",
+  "provenance": {
+    "source_commit": "73566695594c4131145b77d08e1e32f3725a15a7",
+    "source_tree_sha256": "815c04c4f2e35f213cc7a25320a86b40789055e451643c9e36ebb65120b6d5c2",
+    "source_file_count": 207
+  },
   "status": "pass",
   "analytic_square_dispersion_max_error": 0.0,
   "honeycomb_invariants": {
@@ -40,7 +47,7 @@
       "finite_butterfly": true,
       "topology_available": true,
       "adapter_max_energy_error": 0.0,
-      "adapter_chern_exact": true,
+      "adapter_topology_contract_exact": true,
       "band_grid_shape": [
         3,
         7,
@@ -78,9 +85,9 @@
       "lattice": "triangular",
       "butterfly_states": 42,
       "finite_butterfly": true,
-      "topology_available": true,
+      "topology_available": false,
       "adapter_max_energy_error": 0.0,
-      "adapter_chern_exact": true,
+      "adapter_topology_contract_exact": true,
       "band_grid_shape": [
         3,
         7,
@@ -118,9 +125,9 @@
       "lattice": "honeycomb",
       "butterfly_states": 84,
       "finite_butterfly": true,
-      "topology_available": true,
+      "topology_available": false,
       "adapter_max_energy_error": 0.0,
-      "adapter_chern_exact": true,
+      "adapter_topology_contract_exact": true,
       "band_grid_shape": [
         6,
         7,
@@ -170,7 +177,7 @@
       "finite_butterfly": true,
       "topology_available": false,
       "adapter_max_energy_error": 0.0,
-      "adapter_chern_exact": true,
+      "adapter_topology_contract_exact": true,
       "band_grid_shape": [
         9,
         7,
@@ -223,9 +230,9 @@
       "lattice": "bravais",
       "butterfly_states": 42,
       "finite_butterfly": true,
-      "topology_available": true,
+      "topology_available": false,
       "adapter_max_energy_error": 0.0,
-      "adapter_chern_exact": true,
+      "adapter_topology_contract_exact": true,
       "band_grid_shape": [
         3,
         7,

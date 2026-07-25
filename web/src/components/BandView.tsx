@@ -1279,7 +1279,7 @@ function BandCut({
         ))}
       </g>
       <text className="axis-label" x="18" y="242" transform="rotate(-90 18 242)">
-        energy E / t₁
+        energy E
       </text>
       <g transform="translate(740 0)">
         <text x="0" y="22" className="panel-kicker">
@@ -1525,11 +1525,29 @@ function WilsonPlot({
   });
   if (segment.length) segments.push(segment);
 
-  function chooseRow(event: React.MouseEvent<SVGSVGElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  function chooseRow(event: React.MouseEvent<SVGRectElement>) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const bounds = svg.getBoundingClientRect();
     const svgX = ((event.clientX - bounds.left) / bounds.width) * 940;
     const fraction = Math.max(0, Math.min(1, x.invert(svgX)));
     onSelect(Math.round(fraction * (samples - 1)));
+  }
+
+  function chooseRowByKeyboard(
+    event: React.KeyboardEvent<SVGRectElement>,
+  ) {
+    const current = selectedIndex ?? 0;
+    let next = current;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") next -= 1;
+    else if (event.key === "ArrowRight" || event.key === "ArrowUp") next += 1;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = samples - 1;
+    else if (event.key === "PageDown") next -= Math.max(1, Math.round(samples / 10));
+    else if (event.key === "PageUp") next += Math.max(1, Math.round(samples / 10));
+    else return;
+    event.preventDefault();
+    onSelect(Math.max(0, Math.min(samples - 1, next)));
   }
 
   const markerX = selectedIndex === undefined
@@ -1543,7 +1561,7 @@ function WilsonPlot({
       <svg
       className="wilson-plot"
       viewBox="0 0 940 252"
-      role="img"
+      role="group"
       aria-label="Wilson eigenphase versus normalized k2"
       data-export-layer
       data-wilson-points={samples}
@@ -1555,7 +1573,6 @@ function WilsonPlot({
       }
       data-berry-chern={chern}
       data-wilson-winding={winding}
-      onClick={topologyTrusted ? chooseRow : undefined}
       >
         <rect x="0" y="0" width="940" height="252" className="panel-bg" />
         <text x="24" y="22" className="panel-kicker">
@@ -1625,6 +1642,24 @@ function WilsonPlot({
           y2="216"
         />
       )}
+      {topologyTrusted && (
+        <rect
+          className="wilson-interaction"
+          x="62"
+          y="28"
+          width="844"
+          height="188"
+          role="slider"
+          tabIndex={0}
+          aria-label="Selected Wilson-loop momentum row"
+          aria-valuemin={0}
+          aria-valuemax={samples - 1}
+          aria-valuenow={selectedIndex ?? 0}
+          aria-valuetext={`k2 row ${(selectedIndex ?? 0) + 1} of ${samples}`}
+          onClick={chooseRow}
+          onKeyDown={chooseRowByKeyboard}
+        />
+      )}
       <g className="wilson-labels">
         <text x="52" y={y(Math.PI)} textAnchor="end">π</text>
         <text x="52" y={y(0)} textAnchor="end">0</text>
@@ -1655,15 +1690,17 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const metric = useAppStore((state) => state.surfaceMetric);
   const parameters = useAppStore((state) => state.parameters);
+  const storedBandCutZoom = useAppStore((state) => state.bandCutZoom);
   const setBandCutZoom = useAppStore((state) => state.setBandCutZoom);
-  const [selectedPathIndex, setSelectedPathIndex] = useState(0);
-  const [selectedWilsonIndex, setSelectedWilsonIndex] = useState<
-    number | undefined
-  >(undefined);
-  const [markerSource, setMarkerSource] = useState<"path" | "wilson">("path");
+  const selectedMomentumState = useAppStore(
+    (state) => state.selectedMomentum,
+  );
+  const setSelectedMomentum = useAppStore(
+    (state) => state.setSelectedMomentum,
+  );
   const [hoveredBand, setHoveredBand] = useState<number | undefined>(undefined);
   const [bandCutViewport, setBandCutViewport] = useState(
-    resetBandCutViewport,
+    { ...resetBandCutViewport, zoom: storedBandCutZoom },
   );
   const [torusEnabled, setTorusEnabled] = useState(false);
   const [contoursEnabled, setContoursEnabled] = useState(true);
@@ -1673,25 +1710,14 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     if (metric === "gxx" || metric === "gxy") setTorusEnabled(false);
   }, [metric]);
   useEffect(() => {
-    setBandCutViewport(resetBandCutViewport);
+    setBandCutViewport((current) => ({
+      ...resetBandCutViewport,
+      zoom: current.zoom,
+    }));
   }, [bands?.requestId]);
   useEffect(() => {
     setBandCutZoom(bandCutViewport.zoom);
   }, [bandCutViewport.zoom, setBandCutZoom]);
-  useEffect(
-    () => () => setBandCutZoom(1),
-    [setBandCutZoom],
-  );
-  // Reset the Wilson marker only when its own sampling changes: a dispersion
-  // refinement landing in the background must not discard a user's k₂ pick.
-  const wilsonSampleCount = topology?.samplesY ?? bands?.samples;
-  useEffect(() => {
-    setSelectedWilsonIndex(undefined);
-    setMarkerSource("path");
-  }, [bands?.requestId, wilsonSampleCount]);
-  useEffect(() => {
-    setSelectedPathIndex(0);
-  }, [bands?.requestId, dispersion?.requestId]);
   if (!bands) {
     return <div className="view-loading">Diagonalizing the momentum grid…</div>;
   }
@@ -1763,9 +1789,20 @@ export function BandView({ compact = false }: { compact?: boolean }) {
   const dispersionRefinementPending =
     dispersionCanRefine && !exactDispersion;
   const pathData: BandPathData = refinedDispersion ?? bands;
+  const selectedPathIndex = Math.round(
+    selectedMomentumState.fraction
+      * Math.max(0, pathData.pathX.length - 1),
+  );
   const pathSamplesPerSegment =
     refinedDispersion?.pathSamplesPerSegment ?? basePathSamplesPerSegment;
   const wilsonSamples = refinedTopology?.samplesY ?? bands.samples;
+  const selectedWilsonIndex =
+    selectedMomentumState.source === "wilson"
+      ? Math.round(
+          selectedMomentumState.fraction * Math.max(0, wilsonSamples - 1),
+        )
+      : undefined;
+  const markerSource = selectedMomentumState.source;
   const baseCount = bands.samples * bands.samples;
   const displayBand = Math.min(
     hoveredBand ?? selectedBand,
@@ -1988,8 +2025,11 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           viewport={bandCutViewport}
           setViewport={setBandCutViewport}
           onSelectPath={(index) => {
-            setSelectedPathIndex(index);
-            setMarkerSource("path");
+            setSelectedMomentum({
+              source: "path",
+              fraction:
+                index / Math.max(1, pathData.pathX.length - 1),
+            });
           }}
         />
         <WilsonPlot
@@ -1997,8 +2037,10 @@ export function BandView({ compact = false }: { compact?: boolean }) {
             markerSource === "wilson" ? selectedWilsonIndex : undefined
           }
           onSelect={(index) => {
-            setSelectedWilsonIndex(index);
-            setMarkerSource("wilson");
+            setSelectedMomentum({
+              source: "wilson",
+              fraction: index / Math.max(1, wilsonSamples - 1),
+            });
           }}
           topology={refinedTopology}
           resolving={topologyRefinementPending}
@@ -2161,7 +2203,7 @@ export function BandView({ compact = false }: { compact?: boolean }) {
           <span>k₁ / |b₁|</span>
           <span>
             {metric === "energy"
-              ? "E / t₁"
+              ? "E"
               : metric === "berry"
                 ? "ℬ₁₂"
                 : metric === "gxx"

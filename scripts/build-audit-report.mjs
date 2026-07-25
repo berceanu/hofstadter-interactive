@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { auditStatusPasses } from "./audit-verdict.mjs";
+import { auditProvenance } from "./audit-provenance.mjs";
 
 const root = new URL("..", import.meta.url).pathname;
 const auditRoot = join(root, "audit");
@@ -14,6 +15,21 @@ const browser = JSON.parse(
   await readFile(join(auditRoot, "browser-results.json"), "utf8"),
 );
 const benchmark = JSON.parse(await readFile(join(root, "BENCHMARK.json"), "utf8"));
+const currentProvenance = auditProvenance(root);
+for (const [name, evidence] of [
+  ["physics", physics],
+  ["accessibility", accessibility],
+  ["browser", browser],
+]) {
+  if (
+    evidence.provenance?.source_tree_sha256
+      !== currentProvenance.source_tree_sha256
+  ) {
+    throw new Error(
+      `${name} audit evidence is stale for the current source tree. Regenerate the complete audit report.`,
+    );
+  }
+}
 
 const gallery = [
   {
@@ -136,6 +152,10 @@ const verdictLabel = auditPassed ? "PASS AFTER REMEDIATION" : "AUDIT FAILING";
 const verdictDetail = auditPassed
   ? `Honeycomb claim refuted; ${browser.review_verdict.confirmed_findings_fixed} confirmed issues fixed and regression-covered.`
   : "One or more recorded audit inputs report a failure — inspect the sections below.";
+const generatedDate = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "long",
+  timeZone: "UTC",
+}).format(new Date(browser.generated_at));
 
 const familyRows = physics.families
   .map(
@@ -172,9 +192,10 @@ const findingRows = browser.baseline_findings
   )
   .join("");
 
-const friendClaimRows = browser.friend_claims
-  .map(
-    (claim) => `
+const friendClaimRows = browser.friend_claims.length
+  ? browser.friend_claims
+    .map(
+      (claim) => `
       <article class="claim ${claim.verdict === "refuted" ? "refuted" : "confirmed"}">
         <div class="claim-head">
           <span>${escapeHtml(claim.verdict)}</span>
@@ -182,8 +203,12 @@ const friendClaimRows = browser.friend_claims
         </div>
         <p>${escapeHtml(claim.evidence)}</p>
       </article>`,
-  )
-  .join("");
+    )
+    .join("")
+  : `<article class="claim">
+      <div class="claim-head"><span>none</span><strong>No imported review claims</strong></div>
+      <p>This generated run reports only checks and findings backed by current-tree evidence.</p>
+    </article>`;
 
 const finalCheckRows = [
   ...browser.final_checks,
@@ -323,7 +348,7 @@ const html = `<!doctype html>
 <main>
   <header>
     <div>
-      <span class="eyebrow">Comprehensive driven audit · 24 July 2026</span>
+      <span class="eyebrow">Generated audit · ${escapeHtml(generatedDate)}</span>
       <h1>Harper / Hofstadter Interactive</h1>
       <p>UI behavior, numerical physics, topology, geometry, accessibility, responsive layout, exports, cancellation, and performance were exercised against the actual browser build—not inferred from screenshots alone.</p>
     </div>
@@ -359,7 +384,7 @@ const html = `<!doctype html>
 
   <section>
     <span class="eyebrow">02 · Review disposition</span>
-    <h2>What the external review got right—and wrong</h2>
+    <h2>Imported review claims</h2>
     <div class="claim-grid">${friendClaimRows}</div>
   </section>
 
@@ -421,7 +446,7 @@ const html = `<!doctype html>
     <div class="two-col">
       <div class="panel">
         <h3>Measured browser workload</h3>
-        <p>The final driven q=97 square butterfly rendered <b>9,312 states in 6.01 seconds</b>, with a screenshot at 291 states and 3%. The reproducible benchmark records ${benchmark.first_meaningful_render_seconds.toFixed(3)} s to first meaningful chunk, ${benchmark.browser_compute_seconds.toFixed(2)} s computation, and ${benchmark.browser_runtime_and_compute_seconds.toFixed(3)} s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
+        <p>The reproducible q=97 benchmark records ${benchmark.first_meaningful_render_seconds.toFixed(3)} s to first meaningful chunk, ${benchmark.browser_compute_seconds.toFixed(2)} s computation, and ${benchmark.browser_runtime_and_compute_seconds.toFixed(3)} s cold runtime plus computation on the documented Apple M-series laptop—within the 10 s requirement.</p>
       </div>
       <div class="panel">
         <h3>Responsiveness safeguards</h3>
@@ -432,7 +457,10 @@ const html = `<!doctype html>
 
   <section>
     <span class="eyebrow">08 · Visual evidence</span>
-    <h2>Captured during driven testing</h2>
+    <h2>Historical visual context</h2>
+    <p class="note">These retained screenshots are illustrative, not current-run
+    pass evidence. The verdict above is derived only from source-fingerprinted
+    numerical, accessibility, and Playwright result files.</p>
     <div class="gallery">${galleryCards}</div>
   </section>
 
@@ -449,7 +477,7 @@ const html = `<!doctype html>
   </section>
 
   <footer>
-    Self-contained audit artifact · HofstadterTools 1.0.7 numerical core · GPL-3.0 · Generated from browser, pytest, Vitest, Pyodide parity, and Playwright evidence.
+    Self-contained audit artifact · source tree ${currentProvenance.source_tree_sha256.slice(0, 16)} · HofstadterTools 1.0.7 numerical core · GPL-3.0 · Generated from current-tree numerical probes, contrast checks, and the Playwright project matrix.
   </footer>
 </main>
 </body>

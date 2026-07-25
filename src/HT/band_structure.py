@@ -1,9 +1,5 @@
 # --- external imports
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import axes3d
-from prettytable import PrettyTable
-from tqdm import tqdm
 from math import gcd
 import sys
 import warnings
@@ -11,7 +7,6 @@ import warnings
 from HT.functions import band_structure as fbs
 from HT.functions import arguments as fa
 from HT.functions import utility as fu
-from HT.functions import plotting as fp
 from HT.functions import models as fm
 from HT.models.hofstadter import Hofstadter
 
@@ -19,6 +14,16 @@ from HT.models.hofstadter import Hofstadter
 def main():
     # parse input arguments
     args = fa.parse_input_arguments("band_structure", "Plot the Hofstadter Band Structure.")
+    try:
+        import matplotlib.pyplot as plt
+        from prettytable import PrettyTable
+        from tqdm import tqdm
+        from HT.functions import plotting as fp
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "The band_structure command needs the optional CLI dependencies. "
+            "Install them with: pip install 'HofstadterTools[cli]'"
+        ) from exc
     # general arguments
     mod = args['model']
     a = args['a']
@@ -145,7 +150,11 @@ def main():
                         data['eigenvalues_2D'][band, count] = np.real(eigvals[idx[band]])
                     count += 1
     else:  # load from file
-        model, args_load, data = fu.load_data("band_structure", load)
+        model, args_load, data = fu.load_data(
+            "band_structure",
+            load,
+            trusted_legacy=args["trust_legacy_pickle"],
+        )
 
         # fix certain arguments
         # general arguments

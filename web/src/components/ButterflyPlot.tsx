@@ -306,7 +306,7 @@ function PlotLegend({
           : "Energy color scale"
       }
     >
-      <span>{showChern ? (hallScale ? "Hall tᵣ" : "C") : "E / t₁"}</span>
+      <span>{showChern ? (hallScale ? "Hall tᵣ" : "C") : "E"}</span>
       <i
         style={{
           background: showChern
@@ -735,7 +735,7 @@ export function ButterflyPlot({
         xDomain={xDomain}
         yDomain={yDomain}
         xLabel="magnetic flux  φ = p / q"
-        yLabel={wannier ? "integrated density of states" : "energy  E / t₁"}
+        yLabel={wannier ? "integrated density of states" : "energy  E"}
         yFormat={(value) => (wannier ? value.toFixed(2) : value.toFixed(1))}
         xMarker={currentFlux}
       />

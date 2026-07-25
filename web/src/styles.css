@@ -1386,6 +1386,19 @@ button {
   stroke-dasharray: 4 3;
 }
 
+.wilson-interaction {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+
+.wilson-interaction:focus-visible {
+  fill: rgb(92 242 206 / 0.04);
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
 .wilson-labels text,
 .wilson-winding {
   fill: #8da1af;
