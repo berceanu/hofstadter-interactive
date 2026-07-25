@@ -164,7 +164,7 @@ Provide:
 
 Run the complete existing pytest suite natively.
 
-For Pyodide CI, create a small golden-file parity harness around the new `compute_*` entry points. Cover representative square, triangular, honeycomb, kagome, and general Bravais cases.
+For Pyodide CI, create a small golden-file parity harness around the new `compute_*` entry points. Cover representative square, triangular, honeycomb, and kagome cases.
 
 Require:
 

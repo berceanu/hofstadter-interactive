@@ -169,4 +169,30 @@ describe("ResultCache stale-result behavior", () => {
     expect(cache.getSnapshot().geometryStale).toBe(false);
     expect(cache.isExpected("geometry", "geometry-b")).toBe(false);
   });
+
+  it("clears obsolete idle-refinement expectations during parameter churn", () => {
+    const cache = new ResultCache();
+    cache.expectTopology("topology-a");
+    cache.setTopology(
+      { requestId: "topology-result-a" } as TopologyResult,
+      "topology-a",
+    );
+    cache.expectDispersion("dispersion-a");
+    cache.setDispersion(
+      { requestId: "dispersion-result-a" } as DispersionResult,
+      "dispersion-a",
+    );
+
+    cache.expectTopology("topology-b");
+    cache.expectDispersion("dispersion-b");
+    expect(cache.getSnapshot().topologyStale).toBe(true);
+    expect(cache.getSnapshot().dispersionStale).toBe(true);
+
+    cache.clearTopologyExpectation();
+    cache.clearDispersionExpectation();
+    expect(cache.getSnapshot().topologyStale).toBe(false);
+    expect(cache.getSnapshot().dispersionStale).toBe(false);
+    expect(cache.isExpected("topology", "topology-b")).toBe(false);
+    expect(cache.isExpected("dispersion", "dispersion-b")).toBe(false);
+  });
 });

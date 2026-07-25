@@ -43,6 +43,15 @@ async function waitForBandGrid(page: import("@playwright/test").Page) {
   });
 }
 
+async function waitForButterflyComplete(
+  page: import("@playwright/test").Page,
+  timeout = 30_000,
+) {
+  await expect(
+    page.locator('[data-flux-plot="butterfly"]'),
+  ).toHaveAttribute("data-complete", "true", { timeout });
+}
+
 async function configureApp(
   page: import("@playwright/test").Page,
   path = "/",
@@ -64,8 +73,6 @@ async function configureApp(
   const fields = [
     ["t", "#parameter-hoppings"],
     ["alpha", "#parameter-alpha"],
-    ["td", "#parameter-theta-denominator"],
-    ["tn", "#parameter-theta-numerator"],
     ["bgt", "#parameter-band-gap-threshold"],
   ] as const;
   for (const [parameter, selector] of fields) {
@@ -111,6 +118,9 @@ test(
     await expect(page).not.toHaveURL(/\?/);
     await expect(
       page.locator('#parameter-lattice option[value="custom"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('#parameter-lattice option[value="bravais"]'),
     ).toHaveCount(0);
     for (const name of ["LOAD NPZ", "CSV", "NPZ", "PNG", "Art PNG", "Copy link"]) {
       await expect(
@@ -171,7 +181,7 @@ test(
 
 test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }) => {
   await configureApp(page,
-    "/?view=lattice&lat=triangular&p=1&q=11&t=1&alpha=1&tn=1&td=3&period=1&samp=7",
+    "/?view=lattice&lat=triangular&p=1&q=11&t=1&alpha=1&period=1&samp=7",
   );
   await expect(
     page.getByRole("img", {
@@ -204,7 +214,7 @@ test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }
 
 test("uses gauge-invariant Chern groups for touching bands", async ({ page }) => {
   await configureApp(page,
-    "/?view=bands&lat=kagome&p=1&q=3&t=1&alpha=1&tn=1&td=3&period=8&samp=17",
+    "/?view=bands&lat=kagome&p=1&q=3&t=1&alpha=1&period=8&samp=17",
   );
   await waitForBandGrid(page);
   await page.getByRole("combobox", { name: "Band" }).selectOption("2");
@@ -229,7 +239,7 @@ test("streams the butterfly progressively", async ({
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&period=1&samp=7",
   );
   await page.waitForFunction(
     () => {
@@ -244,10 +254,7 @@ test("streams the butterfly progressively", async ({
   expect(progressive.width).toBeGreaterThanOrEqual(500);
   expect(progressive.ink).toBeGreaterThan(200);
 
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   const complete = await webglInkPixels(page);
   expect(complete.ink).toBeGreaterThan(progressive.ink);
 
@@ -257,12 +264,9 @@ test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend
   page,
 }) => {
   await configureApp(page,
-    "/?view=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?view=butterfly&lat=square&p=1&q=7&t=1&alpha=1&period=1&samp=7",
   );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   const plot = page.locator('[data-flux-plot="butterfly"]');
   await expect(plot.locator(".flux-marker")).toContainText("current φ");
   const initialTicks = await plot.locator(".plot-ticks").textContent();
@@ -292,12 +296,9 @@ test("renders the Avron gap plane with Hall-conductivity segments", async ({
   page,
 }) => {
   await configureApp(page,
-    "/?view=butterfly&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?view=butterfly&lat=square&p=1&q=31&t=1&alpha=1&period=1&samp=7",
   );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   await page.getByRole("button", { name: "Gaps", exact: true }).click();
   const plot = page.locator('[data-flux-plot="butterfly"]');
   await expect
@@ -357,7 +358,7 @@ test("selects thin bands forgivingly and scrubs momentum in real time", async ({
   page,
 }) => {
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
+    "/?focus=bands&lat=square&p=1&q=5&t=1&alpha=1&period=1&samp=11",
   );
   await waitForBandGrid(page);
   const cut = page.getByRole("img", {
@@ -439,13 +440,14 @@ test("adapts path detail to linked-cut zoom without recomputing bands", async ({
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=11&t=1&alpha=1&tn=1&td=2&period=1",
+    "/?focus=bands&lat=square&p=1&q=11&t=1&alpha=1&period=1",
   );
   await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
     "data-dispersion-resolution",
-    "optimized",
-    { timeout: 45_000 },
+    "base-optimal",
+    { timeout: 30_000 },
   );
+  await waitForButterflyComplete(page);
   const cut = page.getByRole("img", {
     name: "Band energies along the high-symmetry path with density of states",
   });
@@ -469,9 +471,22 @@ test("adapts path detail to linked-cut zoom without recomputing bands", async ({
   await expect.poll(async () =>
     Number(await cut.getAttribute("data-band-zoom"))
   ).toBeGreaterThan(2);
-  await expect.poll(async () =>
-    Number(await shell.getAttribute("data-dispersion-request-count"))
-  ).toBeGreaterThan(dispersionBefore);
+  await expect
+    .poll(async () =>
+      Number(
+        await page.locator(".bands-layout").getAttribute(
+          "data-scheduled-band-zoom",
+        ),
+      )
+    )
+    .toBeGreaterThan(2);
+  await expect
+    .poll(
+      async () =>
+        Number(await shell.getAttribute("data-dispersion-request-count")),
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(dispersionBefore);
   await expect(cut).toHaveAttribute(
     "data-path-samples-per-segment",
     "96",
@@ -503,7 +518,7 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
   page,
 }) => {
   await configureApp(page,
-    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=17",
+    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&period=1&samp=17",
   );
   await waitForBandGrid(page);
   const wilson = page.getByRole("group", {
@@ -536,7 +551,7 @@ test("plots branch-safe Wilson phases and links a k2 row to the surface", async 
 test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
   test.setTimeout(120_000);
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&bgt=0.01",
+    "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&period=1&bgt=0.01",
   );
   const shell = page.locator(".app-shell");
   await expect(shell).toHaveAttribute("data-band-request-count", "1", {
@@ -590,17 +605,22 @@ test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
   );
 });
 
-test("automatically refines q=31 dispersion without detaching the lifted symmetry path", async ({
+test("refines q=31 dispersion lazily on zoom without detaching the lifted symmetry path", async ({
   page,
 }) => {
   test.setTimeout(120_000);
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&bgt=0.01",
+    "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&period=1&bgt=0.01",
   );
   const shell = page.locator(".app-shell");
   await expect(shell).toHaveAttribute("data-band-request-count", "1", {
     timeout: 30_000,
   });
+  await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
+    "data-topology-resolution",
+    "resolved",
+    { timeout: 90_000 },
+  );
   await page.getByLabel("Band", { exact: true }).selectOption("14");
   const cut = page.getByRole("img", {
     name: "Band energies along the high-symmetry path with density of states",
@@ -608,6 +628,20 @@ test("automatically refines q=31 dispersion without detaching the lifted symmetr
   const scene = page.locator(".surface-canvas");
   const bandRequests = await shell.getAttribute("data-band-request-count");
   const sweepRequests = await shell.getAttribute("data-sweep-count");
+  await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
+    "data-dispersion-resolution",
+    "base-optimal",
+  );
+  const cutBounds = await cut.boundingBox();
+  expect(cutBounds).not.toBeNull();
+  await page.mouse.move(
+    cutBounds!.x + cutBounds!.width * 0.5,
+    cutBounds!.y + cutBounds!.height * 0.5,
+  );
+  await page.mouse.wheel(0, -700);
+  await expect.poll(async () =>
+    Number(await cut.getAttribute("data-band-zoom"))
+  ).toBeGreaterThan(1);
   await expect(shell).toHaveAttribute("data-dispersion-request-count", "1");
   await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
     "data-dispersion-resolution",
@@ -645,7 +679,7 @@ test("links property-table hover and selection to the band group", async ({
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?view=bands&lat=square&p=1&q=4&t=1&alpha=1&tn=1&td=2&period=1&samp=11&bgt=0.01",
+    "/?view=bands&lat=square&p=1&q=4&t=1&alpha=1&period=1&samp=11&bgt=0.01",
   );
   await waitForBandGrid(page);
   const table = page.getByRole("table", { name: "Band property table" });
@@ -674,7 +708,7 @@ test("links symmetry points, both BZ outlines, and the lifted 3D path", async ({
   page,
 }) => {
   await configureApp(page,
-    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
+    "/?view=bands&lat=square&p=1&q=5&t=1&alpha=1&period=1&samp=11",
   );
   await waitForBandGrid(page);
   const scene = page.locator(".surface-canvas");
@@ -706,12 +740,9 @@ test("drags the linked coprime flux cursor without launching another sweep", asy
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&period=1&samp=7",
   );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   const shell = page.locator(".app-shell");
   const sweepCount = Number(await shell.getAttribute("data-sweep-count"));
   const bandCount = Number(
@@ -723,6 +754,32 @@ test("drags the linked coprime flux cursor without launching another sweep", asy
   expect(bounds).not.toBeNull();
   const y = bounds!.y + bounds!.height * 0.5;
   await page.mouse.move(bounds!.x + bounds!.width / 7, y);
+  await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width * (3 / 7), y, {
+    steps: 8,
+  });
+  await expect(butterfly).toHaveAttribute("data-current-numerator", "3");
+  await expect(page.getByLabel("p", { exact: true })).toHaveValue("1");
+  expect(Number(await shell.getAttribute("data-band-request-count"))).toBe(
+    bandCount,
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  await expect(page.locator(".bands-layout")).toHaveAttribute(
+    "data-recomputing",
+    "false",
+  );
+  await page.mouse.move(bounds!.x + bounds!.width * (3 / 7), y);
+  await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width * (5 / 7), y, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect(Number(await shell.getAttribute("data-band-request-count"))).toBe(
+    bandCount,
+  );
+  await page.mouse.move(bounds!.x + bounds!.width * (5 / 7), y);
   await page.mouse.down();
   await page.mouse.move(bounds!.x + bounds!.width * (3 / 7), y, {
     steps: 8,
@@ -739,6 +796,14 @@ test("drags the linked coprime flux cursor without launching another sweep", asy
       { timeout: 30_000 },
     )
     .toBeGreaterThan(bandCount);
+  await expect(page.locator(".bands-layout")).toHaveAttribute(
+    "data-recomputing",
+    "false",
+    { timeout: 30_000 },
+  );
+  expect(Number(await shell.getAttribute("data-band-request-count"))).toBe(
+    bandCount + 1,
+  );
   expect(Number(await shell.getAttribute("data-sweep-count"))).toBe(
     sweepCount,
   );
@@ -766,17 +831,122 @@ test("drags the linked coprime flux cursor without launching another sweep", asy
   );
 });
 
+test("coalesces rapid slider edits before launching base and refinement jobs", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await configureApp(page,
+    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&period=1&samp=7",
+  );
+  await waitForButterflyComplete(page);
+  const shell = page.locator(".app-shell");
+  const bandsBefore = Number(
+    await shell.getAttribute("data-band-request-count"),
+  );
+  const sweepsBefore = Number(
+    await shell.getAttribute("data-sweep-count"),
+  );
+  const dispersionBefore = Number(
+    await shell.getAttribute("data-dispersion-request-count"),
+  );
+  const topologyBefore = Number(
+    await shell.getAttribute("data-topology-request-count"),
+  );
+  const slider = page.getByLabel("Flux denominator q");
+
+  for (const q of [11, 13, 17]) {
+    await slider.fill(String(q));
+    await page.waitForTimeout(180);
+    expect(
+      Number(await shell.getAttribute("data-band-request-count")),
+    ).toBe(bandsBefore);
+    expect(
+      Number(await shell.getAttribute("data-dispersion-request-count")),
+    ).toBe(dispersionBefore);
+    expect(
+      Number(await shell.getAttribute("data-topology-request-count")),
+    ).toBe(topologyBefore);
+  }
+
+  await expect
+    .poll(
+      async () =>
+        Number(await shell.getAttribute("data-band-request-count")),
+      { timeout: 30_000 },
+    )
+    .toBe(bandsBefore + 1);
+  await expect
+    .poll(
+      async () => Number(await shell.getAttribute("data-sweep-count")),
+      { timeout: 30_000 },
+    )
+    .toBe(sweepsBefore + 1);
+  await expect(page.locator(".bands-layout")).toHaveAttribute(
+    "data-recomputing",
+    "false",
+    { timeout: 30_000 },
+  );
+});
+
+test("settles the current-flux bands at 23/31 before idle refinements", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await configureApp(page,
+    "/?focus=workspace&lat=square&p=1&q=31&t=1&alpha=1&period=1&bgt=0.01",
+  );
+  const shell = page.locator(".app-shell");
+  const bands = page.locator(".bands-layout");
+  await expect(bands).toBeVisible({ timeout: 30_000 });
+  await expect(bands).toHaveAttribute("data-recomputing", "false", {
+    timeout: 30_000,
+  });
+  const bandsBefore = Number(
+    await shell.getAttribute("data-band-request-count"),
+  );
+  const dispersionBefore = Number(
+    await shell.getAttribute("data-dispersion-request-count"),
+  );
+
+  await page.getByLabel("p", { exact: true }).fill("23");
+  await page.getByLabel("p", { exact: true }).press("Tab");
+  await expect(page.getByLabel("p", { exact: true })).toHaveValue("23");
+  await expect
+    .poll(
+      async () =>
+        Number(await shell.getAttribute("data-band-request-count")),
+      { timeout: 30_000 },
+    )
+    .toBe(bandsBefore + 1);
+  await expect(bands).toHaveAttribute("data-recomputing", "false", {
+    timeout: 30_000,
+  });
+  await expect(page.locator(".runtime-status")).not.toContainText(
+    "Diagonalizing the momentum grid",
+  );
+  const resolution = page.locator(".adaptive-resolution-row");
+  await expect(resolution).toHaveAttribute(
+    "data-dispersion-resolution",
+    "base-optimal",
+  );
+  expect(
+    Number(await shell.getAttribute("data-dispersion-request-count")),
+  ).toBe(dispersionBefore);
+  await expect(resolution).toHaveAttribute(
+    "data-topology-resolution",
+    /resolved|unavailable/,
+    { timeout: 90_000 },
+  );
+});
+
 test("keeps stale workspace plots visible and dimmed during replacement", async ({
   page,
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&period=1&samp=7",
   );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   const plot = page.locator('[data-flux-plot="butterfly"]');
   const oldEnergyMaximum = await plot.getAttribute("data-energy-max");
   await page.getByLabel("q", { exact: true }).fill("47");
@@ -805,7 +975,7 @@ test("loads quantum geometry only after the user asks for it", async ({
 }) => {
   test.setTimeout(60_000);
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=4&t=1&alpha=1&tn=1&td=2&period=1&samp=7&bgt=0.01",
+    "/?focus=bands&lat=square&p=1&q=4&t=1&alpha=1&period=1&samp=7&bgt=0.01",
   );
   await waitForBandGrid(page);
   const shell = page.locator(".app-shell");
@@ -831,12 +1001,9 @@ test("marks unsupported fast topology as unavailable instead of physical C = 0",
   page,
 }) => {
   await configureApp(page,
-    "/?view=butterfly&lat=kagome&p=1&q=11&t=1&alpha=1&tn=1&td=3&period=8&samp=7",
+    "/?view=butterfly&lat=kagome&p=1&q=11&t=1&alpha=1&period=8&samp=7",
   );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Computed locally",
-    { timeout: 30_000 },
-  );
+  await waitForButterflyComplete(page);
   const topologyButton = page.getByRole("button", {
     name: "Chern unavailable",
   });
@@ -849,7 +1016,7 @@ test("morphs the selected energy sheet into an educational BZ torus", async ({
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await configureApp(page,
-    "/?focus=bands&lat=square&p=1&q=3&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+    "/?focus=bands&lat=square&p=1&q=3&t=1&alpha=1&period=1&samp=7",
   );
   await waitForBandGrid(page);
   const scene = page.locator(".surface-canvas");

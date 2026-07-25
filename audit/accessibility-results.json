@@ -1,10 +1,10 @@
 {
   "schema": "hofstadter-interactive/accessibility-audit/1",
-  "generated_at": "2026-07-25T14:02:04.383Z",
+  "generated_at": "2026-07-25T17:52:06.883Z",
   "provenance": {
-    "source_commit": "e16fb58aa022e892fd3f6cef1d5c3e9d86bc4821",
-    "source_tree_sha256": "2acb1bd4928f759de9dbbb16dc8c3d7b9dc277fac39a5e0c57cec31068569b03",
-    "source_file_count": 207
+    "source_commit": "18c4939d649819e41431f8551530640f634b94a2",
+    "source_tree_sha256": "b17bacbe52e87de507a47368c74444bf503be0e114c28f65b4cf723bdd32ecef",
+    "source_file_count": 201
   },
   "status": "pass",
   "standard": "WCAG 2.2 AA normal text contrast",

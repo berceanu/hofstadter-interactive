@@ -27,6 +27,7 @@ _MAX_GEOMETRY_WORKING_BYTES = 256 * 1024 * 1024
 _MAX_SWEEP_EIGENVALUE_COST = 8_000_000_000
 _WILSON_PHASE_STEP_LIMIT = 0.95 * np.pi
 _MAX_HOPPING_MAGNITUDE = 1_000_000.0
+_SUPPORTED_LATTICES = {"square", "triangular", "honeycomb", "kagome"}
 
 
 def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
@@ -47,6 +48,11 @@ def _band_grid_key(parameters: dict[str, Any], samples: int) -> tuple[Any, ...]:
 def _model(parameters: dict[str, Any], p: int | None = None) -> Hofstadter:
     theta = parameters.get("theta", [1, 3])
     lattice = str(parameters.get("lattice", "square"))
+    if lattice not in _SUPPORTED_LATTICES:
+        raise ValueError(
+            f"Unsupported browser lattice: {lattice}. "
+            "Choose square, triangular, honeycomb, or kagome."
+        )
     numerator = int(parameters.get("p", 1) if p is None else p)
     denominator = int(parameters.get("q", 31))
     if denominator < 1 or gcd(numerator, denominator) != 1:
@@ -97,8 +103,8 @@ def _band_cherns(model: Hofstadter, band_count: int) -> tuple[np.ndarray, bool]:
 
     The square-window Diophantine branch (``|t_r| <= q/2``) reproduces the
     Fukui/Wilson-certified invariants only for the non-zero,
-    nearest-neighbour, unit-period square model.  Triangular, Bravais,
-    extra-hopping, altered-period, zero-hopping, and doubled-honeycomb
+    nearest-neighbour, unit-period square model.  Triangular, extra-hopping,
+    altered-period, zero-hopping, and doubled-honeycomb
     colorings all contradict or fail to define the certified band topology,
     so they are reported as unavailable rather than mislabeled.
     """

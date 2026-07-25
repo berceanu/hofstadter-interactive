@@ -38,6 +38,7 @@ function chernColor(chern: number) {
 }
 
 const resetAxis: AxisTransform = { zoom: 1, pan: 0 };
+const FLUX_COMMIT_DELAY_MS = 500;
 
 function boundedAxis(transform: AxisTransform): AxisTransform {
   const zoom = Math.min(18, Math.max(1, transform.zoom));
@@ -323,7 +324,11 @@ export function ButterflyPlot({
   const { butterfly, butterflyStale } = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
   const parameters = useAppStore((state) => state.parameters);
-  const currentFlux = parameters.p / parameters.q;
+  const [draggingNumerator, setDraggingNumerator] = useState<
+    number | undefined
+  >(undefined);
+  const displayedNumerator = draggingNumerator ?? parameters.p;
+  const currentFlux = displayedNumerator / parameters.q;
   const setParameter = useAppStore((state) => state.setParameter);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
   const setSelectedPoint = useAppStore((state) => state.setSelectedPoint);
@@ -341,15 +346,22 @@ export function ButterflyPlot({
         lastX: number;
         lastY: number;
         moved: boolean;
+        previewNumerator?: number;
       }
     | undefined
   >(undefined);
   const suppressInspectionUntil = useRef(0);
-  const [draggingNumerator, setDraggingNumerator] = useState<
-    number | undefined
-  >(undefined);
+  const fluxCommitTimeout = useRef<number | undefined>(undefined);
   const [showGapStates, setShowGapStates] = useState(true);
   const [visibleGapSegments, setVisibleGapSegments] = useState(0);
+  useEffect(
+    () => () => {
+      if (fluxCommitTimeout.current !== undefined) {
+        window.clearTimeout(fluxCommitTimeout.current);
+      }
+    },
+    [],
+  );
   const arrays = useMemo(() => flattenButterfly(butterfly), [butterfly]);
   const energyRange = useMemo(
     () => extent(arrays.energy, [-4, 4]),
@@ -538,10 +550,27 @@ export function ButterflyPlot({
     const worldX = currentX.pan + ndcX / currentX.zoom;
     const flux = Math.max(0, Math.min(1, (worldX + 1) / 2));
     const numerator = nearestCoprimeNumerator(flux, parameters.q);
-    setDraggingNumerator(numerator);
-    if (numerator !== useAppStore.getState().parameters.p) {
-      setParameter("p", numerator);
+    if (drag.current?.mode === "cursor") {
+      drag.current.previewNumerator = numerator;
     }
+    setDraggingNumerator(numerator);
+  }
+
+  function cancelPendingFluxCommit() {
+    if (fluxCommitTimeout.current === undefined) return;
+    window.clearTimeout(fluxCommitTimeout.current);
+    fluxCommitTimeout.current = undefined;
+  }
+
+  function commitFluxAfterInteraction(numerator: number) {
+    cancelPendingFluxCommit();
+    fluxCommitTimeout.current = window.setTimeout(() => {
+      fluxCommitTimeout.current = undefined;
+      if (numerator !== useAppStore.getState().parameters.p) {
+        setParameter("p", numerator);
+      }
+      setDraggingNumerator(undefined);
+    }, FLUX_COMMIT_DELAY_MS);
   }
 
   return (
@@ -553,16 +582,18 @@ export function ButterflyPlot({
       ].filter(Boolean).join(" ")}
       data-flux-plot={wannier ? "wannier" : "butterfly"}
       data-recomputing={butterflyStale}
-      data-current-numerator={parameters.p}
+      data-current-numerator={displayedNumerator}
       data-energy-min={energyRange[0]}
       data-energy-max={energyRange[1]}
       data-point-count={data.x.length}
+      data-complete={butterfly?.complete ?? false}
       data-gap-segments={gapMode ? visibleGapSegments : 0}
     >
       <div
         ref={stageRef}
         className="plot-stage"
         onPointerDown={(event) => {
+          cancelPendingFluxCommit();
           const rect = event.currentTarget.getBoundingClientRect();
           const markerNdc =
             (currentFlux * 2 - 1 - xTransform.pan) * xTransform.zoom;
@@ -577,6 +608,9 @@ export function ButterflyPlot({
             lastX: event.clientX,
             lastY: event.clientY,
             moved: false,
+            ...(mode === "cursor"
+              ? { previewNumerator: parameters.p }
+              : {}),
           };
           if (mode === "cursor") {
             setDraggingNumerator(parameters.p);
@@ -626,7 +660,14 @@ export function ButterflyPlot({
         onPointerUp={(event) => {
           const completedDrag = drag.current;
           drag.current = undefined;
-          setDraggingNumerator(undefined);
+          if (
+            completedDrag?.mode === "cursor"
+            && completedDrag.previewNumerator !== undefined
+          ) {
+            commitFluxAfterInteraction(completedDrag.previewNumerator);
+          } else {
+            setDraggingNumerator(undefined);
+          }
           if (completedDrag?.mode === "pan" && !completedDrag.moved) {
             suppressInspectionUntil.current = 0;
             const point = inspectPoint(event);
@@ -642,10 +683,12 @@ export function ButterflyPlot({
           }
         }}
         onPointerLeave={() => {
+          cancelPendingFluxCommit();
           drag.current = undefined;
           setDraggingNumerator(undefined);
         }}
         onPointerCancel={() => {
+          cancelPendingFluxCommit();
           drag.current = undefined;
           setDraggingNumerator(undefined);
         }}

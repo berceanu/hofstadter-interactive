@@ -123,31 +123,9 @@ function greatestCommonDivisor(first: number, second: number) {
 
 export function canonicalTheta(
   lattice: LatticeKind,
-  theta: [number, number],
 ): [number, number] {
   if (lattice === "square") return [1, 2];
-  if (
-    lattice === "triangular"
-    || lattice === "honeycomb"
-    || lattice === "kagome"
-  ) {
-    return [1, 3];
-  }
-  const denominator = boundedInteger(
-    theta[1],
-    defaultParameters.theta[1],
-    2,
-    360,
-  );
-  return [
-    boundedInteger(
-      theta[0],
-      defaultParameters.theta[0],
-      1,
-      Math.min(180, denominator - 1),
-    ),
-    denominator,
-  ];
+  return [1, 3];
 }
 
 export function canonicalPeriod(lattice: LatticeKind) {
@@ -203,7 +181,7 @@ export function normalizeParameters(
       0.1,
       4,
     ),
-    theta: canonicalTheta(candidate.lattice, candidate.theta),
+    theta: canonicalTheta(candidate.lattice),
     period: canonicalPeriod(candidate.lattice),
     samples,
     bgt: boundedNumber(candidate.bgt, defaultParameters.bgt, 0, 10),
@@ -218,7 +196,6 @@ const latticeDefaults: Record<
   triangular: { theta: [1, 3], alpha: 1 },
   honeycomb: { theta: [1, 3], alpha: 1 },
   kagome: { theta: [1, 3], alpha: 1 },
-  bravais: { theta: [67, 180], alpha: 1 },
 };
 
 export const useAppStore = create<AppState>((set) => ({

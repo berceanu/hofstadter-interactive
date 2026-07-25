@@ -23,7 +23,6 @@ CASES = [
     ("triangular", [1.0], 1, [1, 3]),
     ("honeycomb", [1.0], 1, [1, 3]),
     ("kagome", [1.0], 8, [1, 3]),
-    ("bravais", [0.5, 0.2], 1, [67, 180]),
 ]
 
 
@@ -651,11 +650,6 @@ def test_non_coprime_flux_is_rejected():
     "parameters",
     [
         {
-            "lattice": "bravais",
-            "hoppings": [0.0],
-            "theta": [67, 180],
-        },
-        {
             "lattice": "square",
             "hoppings": [0.0, 0.0],
             "theta": [1, 2],
@@ -674,6 +668,22 @@ def test_all_zero_generic_hoppings_are_rejected_cleanly(parameters):
             },
             1,
             2,
+        )
+
+
+def test_removed_browser_lattice_is_rejected():
+    with pytest.raises(ValueError, match="Unsupported browser lattice"):
+        compute_bands(
+            {
+                "lattice": "bravais",
+                "hoppings": [1.0],
+                "period": 1,
+                "theta": [67, 180],
+                "alpha": 1.0,
+                "p": 1,
+                "q": 3,
+                "samples": 7,
+            }
         )
 
 

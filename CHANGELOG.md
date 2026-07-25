@@ -22,12 +22,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   along with NPZ file-picker and drag-and-drop import.
 - Remove URL hydration, automatic URL synchronization, and copy-link controls;
   each session now starts from the canonical default state.
-- Remove the custom-basis lattice editor and its browser-only Python adapter
-  override. Named lattices and the general Bravais model remain available.
+- Remove the custom-basis and general-Bravais lattice editors and reject both
+  generic geometries at the browser adapter boundary. The interactive product
+  now exposes only square, triangular, honeycomb, and Kagome presets.
 - Remove the magnetic-period control and force the canonical internal period
   for each lattice preset.
 - Standardize topological coloring on the upstream-inspired Avron palette and
   remove palette selection state.
+- Remove the "Runs entirely in your browser" footer text.
+- Rename the title subtitle from "Interactive Laboratory" to "Tools."
+- Remove the "Single Scientific Workspace" command-bar label.
+- Remove the "Spectral Hero" and "Shared Flux Axis" panel labels.
+- Preview flux-cursor drags locally and settle repeated grab/release movements
+  into one final numerator edit, preventing band computations from being
+  repeatedly restarted and left appearing to recompute after interaction.
+- Split base-result scheduling from idle-only dispersion, topology, and
+  geometry refinement; rapid parameter edits now clear obsolete refinement
+  state and abort each superseded worker request at most once.
+- Keep default-viewport dispersion on the completed render grid and launch
+  high-detail dispersion lazily from band-cut zoom. Default flux changes no
+  longer make dispersion compete with selected-band topology, and refinement
+  status appears only for work actually queued or running.
+- Detach superseded scheduler jobs from orphaned worker promises immediately
+  and gate their replacements on worker recovery, preventing an aborted
+  synchronous Pyodide refinement from blocking the latest parameter request.
 
 ### Adversarial audit remediation
 

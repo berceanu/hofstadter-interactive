@@ -36,7 +36,7 @@ describe("scientific parameter invariants", () => {
     expect(useAppStore.getState().parameters).toMatchObject({ p: 6, q: 11 });
   });
 
-  it("prevents a degenerate Bravais angle and invalid scalar bounds", () => {
+  it("forces canonical geometry and bounds invalid scalar values", () => {
     const normalized = normalizeParameters({
       ...defaultParameters,
       alpha: -4,
@@ -72,13 +72,6 @@ describe("scientific parameter invariants", () => {
       theta: [1, 2],
     });
     expect(honeycomb.theta).toEqual([1, 3]);
-
-    const bravais = normalizeParameters({
-      ...defaultParameters,
-      lattice: "bravais",
-      theta: [67, 180],
-    });
-    expect(bravais.theta).toEqual([67, 180]);
   });
 
   it("always reduces the displayed magnetic flux", () => {

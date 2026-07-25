@@ -372,11 +372,11 @@ const html = `<!doctype html>
     <div class="two-col">
       <div class="panel">
         <h3>Driven browser coverage</h3>
-        <p>Changed lattice, p/q, hopping, anisotropy, angle, and grouping controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; and cancelled q=97 work.</p>
+        <p>Changed lattice, p/q, hopping, anisotropy, and grouping controls; inspected all four result panels and progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; and cancelled q=97 work.</p>
       </div>
       <div class="panel">
         <h3>Numerical coverage</h3>
-        <p>Compared browser adapters with direct HofstadterTools Hamiltonians for square, triangular, honeycomb, Kagome, and general Bravais families. Checked analytic dispersions, honeycomb Γ/K/K′ limits and coordination, q=47 bandwidth and chiral symmetry, Diophantine gap relations, grouped topology, reciprocal duality, Wigner–Seitz areas, q-folding, finiteness, and sampling stability.</p>
+        <p>Compared browser adapters with direct HofstadterTools Hamiltonians for square, triangular, honeycomb, and Kagome families. Checked analytic dispersions, honeycomb Γ/K/K′ limits and coordination, q=47 bandwidth and chiral symmetry, Diophantine gap relations, grouped topology, reciprocal duality, Wigner–Seitz areas, q-folding, finiteness, and sampling stability.</p>
       </div>
     </div>
     <p class="note" style="margin-top:16px">Theory and expected visualization conventions were cross-checked against the current HofstadterTools 1.0.7 <a href="https://hofstadter.tools/theory/model.html">model theory</a>, <a href="https://hofstadter.tools/theory/band_structure.html">band-structure reference paths</a>, <a href="https://hofstadter.tools/theory/butterfly.html">butterfly/Chern/Wannier theory</a>, and <a href="https://hofstadter.tools/gallery.html">lattice gallery</a>.</p>
@@ -410,7 +410,7 @@ const html = `<!doctype html>
       </div>
       <div class="panel">
         <h3>Analytic, topological, and geometric parity</h3>
-        <p>Square zero-flux dispersion matched <i>E(k)=−2t[cos(kₓ)+cos(kᵧ)]</i> with maximum error <b>${physics.analytic_square_dispersion_max_error.toExponential(1)}</b>; all five energy adapters matched their direct native Hamiltonians. Every checked gap obeyed the Diophantine relation for 22/89 and 15/47. Grouped Chern values were stable from 7×7 to 11×11, complete bundles summed to C=0, and both ordinary and magnetic BZ duality/area/folding invariants passed.</p>
+        <p>Square zero-flux dispersion matched <i>E(k)=−2t[cos(kₓ)+cos(kᵧ)]</i> with maximum error <b>${physics.analytic_square_dispersion_max_error.toExponential(1)}</b>; all four energy adapters matched their direct native Hamiltonians. Every checked gap obeyed the Diophantine relation for 22/89 and 15/47. Grouped Chern values were stable from 7×7 to 11×11, complete bundles summed to C=0, and both ordinary and magnetic BZ duality/area/folding invariants passed.</p>
       </div>
     </div>
   </section>

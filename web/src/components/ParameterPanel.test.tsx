@@ -26,6 +26,15 @@ describe("ParameterPanel", () => {
       screen.queryByLabelText("Momentum samples per axis"),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Period")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "General Bravais" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("θ numerator"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("θ denominator"),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText("Band-gap threshold bgt")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {

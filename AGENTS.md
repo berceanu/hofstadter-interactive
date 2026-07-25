@@ -26,8 +26,8 @@ and the current `CHANGELOG.md` before substantial work.
 
 ## Scientific invariants
 
-- Named lattices force canonical θ: square `1/2`; triangular, honeycomb, and
-  kagome `1/3`; only Bravais/custom inputs may define their own geometry.
+- Browser lattices force canonical θ: square `1/2`; triangular, honeycomb, and
+  kagome `1/3`. Generic Bravais/custom geometries are not browser inputs.
 - Always reduce magnetic flux `p/q` to coprime form after an edit is
   committed. Band and group indices are zero-based everywhere.
 - Butterfly spectra follow the upstream Γ-point convention. Choose band,

@@ -17,7 +17,6 @@ const lattices: { value: LatticeKind; label: string }[] = [
   { value: "triangular", label: "Triangular" },
   { value: "honeycomb", label: "Honeycomb" },
   { value: "kagome", label: "Kagome" },
-  { value: "bravais", label: "General Bravais" },
 ];
 
 function FieldLabel({
@@ -244,57 +243,6 @@ export function ParameterPanel() {
           }
           onChange={(event) => setParameter("alpha", Number(event.target.value))}
         />
-      </div>
-
-      <div className="split-fields">
-        <div className="field compact">
-          <FieldLabel
-            htmlFor="parameter-theta-numerator"
-            help={parameterHelp.theta}
-          >
-            θ numerator
-          </FieldLabel>
-          <input
-            id="parameter-theta-numerator"
-            type="number"
-            min="1"
-            max="180"
-            value={parameters.theta[0]}
-            disabled={
-              parameters.lattice !== "bravais"
-            }
-            onChange={(event) =>
-              setParameter("theta", [
-                Number(event.target.value),
-                parameters.theta[1],
-              ])
-            }
-          />
-        </div>
-        <div className="field compact">
-          <FieldLabel
-            htmlFor="parameter-theta-denominator"
-            help={parameterHelp.theta}
-          >
-            θ denominator
-          </FieldLabel>
-          <input
-            id="parameter-theta-denominator"
-            type="number"
-            min="2"
-            max="360"
-            value={parameters.theta[1]}
-            disabled={
-              parameters.lattice !== "bravais"
-            }
-            onChange={(event) =>
-              setParameter("theta", [
-                parameters.theta[0],
-                Number(event.target.value),
-              ])
-            }
-          />
-        </div>
       </div>
 
       <div className="field">

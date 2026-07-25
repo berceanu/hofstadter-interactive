@@ -34,6 +34,9 @@ export {
 
 const engine = new PyodideWorkerEngine();
 const ADAPTIVE_WILSON_STEP_LIMIT = 0.8 * Math.PI;
+const BASE_COMPUTE_SETTLE_MS = 300;
+const REFINEMENT_IDLE_MS = 1_200;
+let computeScheduleGeneration = 0;
 
 function requestId(kind: string) {
   return `${kind}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
@@ -67,6 +70,7 @@ function desiredComputations(
   geometryRequested: boolean,
   selectedBand: number,
   bandCutZoom: number,
+  includeRefinements: boolean,
 ): DesiredComputations {
   const bandsKey = bandComputationKey(parameters);
   const snapshot = resultCache.getSnapshot();
@@ -82,16 +86,19 @@ function desiredComputations(
   );
   const basePathSamples = Math.max(24, parameters.samples);
   const dispersionCanRefine =
-    dispersionGrid.surfaceSamples > parameters.samples
-    || dispersionGrid.pathSamplesPerSegment > basePathSamples;
+    bandCutZoom > 1
+    && (
+      dispersionGrid.surfaceSamples > parameters.samples
+      || dispersionGrid.pathSamplesPerSegment > basePathSamples
+    );
   return {
     parameters,
     sweepKey: sweepComputationKey(parameters),
     bandsKey,
-    ...(geometryRequested
+    ...(includeRefinements && geometryRequested
       ? { geometryKey: bandComputationKey(parameters) }
       : {}),
-    ...(bandsKey && topologyPlan.levels.length
+    ...(includeRefinements && bandsKey && topologyPlan.levels.length
       ? {
           topologyKey: topologyComputationKey(
             parameters,
@@ -102,7 +109,7 @@ function desiredComputations(
           selectedBand: clampedBand,
         }
       : {}),
-    ...(bandsKey && dispersionCanRefine
+    ...(includeRefinements && bandsKey && dispersionCanRefine
       ? {
           dispersionKey: dispersionComputationKey(
             parameters,
@@ -119,6 +126,9 @@ class ComputeScheduler {
   private desired?: DesiredComputations;
   private running = false;
   private cancelRequested = false;
+  private abortRequestId?: string;
+  private abortPromise?: Promise<void>;
+  private engineBarrier: Promise<void> = Promise.resolve();
   private active?: {
     kind:
       | "butterfly"
@@ -129,6 +139,8 @@ class ComputeScheduler {
       | "dispersion";
     key: string;
     requestId: string;
+    cancelled: Promise<never>;
+    cancel: () => void;
   };
 
   schedule(next: DesiredComputations) {
@@ -142,9 +154,10 @@ class ComputeScheduler {
       resultCache.clearGeometryExpectation();
     }
     if (next.topologyKey) resultCache.expectTopology(next.topologyKey);
+    else resultCache.clearTopologyExpectation();
     if (next.dispersionKey) {
       resultCache.expectDispersion(next.dispersionKey);
-    }
+    } else resultCache.clearDispersionExpectation();
     if (next.sweepKey) resultCache.expectButterfly(next.sweepKey);
 
     const snapshot = resultCache.getSnapshot();
@@ -175,14 +188,63 @@ class ComputeScheduler {
                   ? next.topologyKey
                   : next.dispersionKey;
       if (this.active.key !== expectedKey) {
-        if (this.active.kind === "butterfly") {
-          void engine.cancel(this.active.requestId);
-        } else {
-          void engine.abort(this.active.requestId);
-        }
+        void this.abortActive();
       }
     }
     void this.pump();
+  }
+
+  private expectedKeyForActive(next: DesiredComputations) {
+    if (!this.active) return undefined;
+    return this.active.kind === "butterfly"
+      ? next.sweepKey
+      : this.active.kind === "bands"
+        ? next.bandsKey
+        : this.active.kind === "lattice"
+          ? next.latticeKey
+          : this.active.kind === "geometry"
+            ? next.geometryKey
+            : this.active.kind === "topology"
+              ? next.topologyKey
+              : next.dispersionKey;
+  }
+
+  deferUntilSettled(next: DesiredComputations) {
+    this.desired = undefined;
+    this.cancelRequested = true;
+    if (next.latticeKey) resultCache.expectLattice(next.latticeKey);
+    if (next.bandsKey) resultCache.expectBands(next.bandsKey);
+    if (next.sweepKey) resultCache.expectButterfly(next.sweepKey);
+    resultCache.clearGeometryExpectation();
+    resultCache.clearTopologyExpectation();
+    resultCache.clearDispersionExpectation();
+    if (!this.active) return;
+    if (this.active.key === this.expectedKeyForActive(next)) return;
+    useAppStore.getState().setProgress({
+      phase: "idle",
+      fraction: 0,
+      message: "Waiting for parameter interaction to settle",
+    });
+    void this.abortActive();
+  }
+
+  private abortActive(): Promise<void> {
+    if (!this.active) return Promise.resolve();
+    if (
+      this.abortRequestId === this.active.requestId
+      && this.abortPromise
+    ) {
+      return this.abortPromise;
+    }
+    const active = this.active;
+    active.cancel();
+    this.abortRequestId = active.requestId;
+    this.abortPromise =
+      active.kind === "butterfly"
+        ? engine.cancel(active.requestId)
+        : engine.abort(active.requestId);
+    this.engineBarrier = this.abortPromise.catch(() => undefined);
+    return this.abortPromise;
   }
 
   private async pump() {
@@ -207,6 +269,13 @@ class ComputeScheduler {
                 cached: () => resultCache.hasBands(target.bandsKey!),
               }
             : undefined,
+          target.sweepKey
+            ? {
+                kind: "butterfly" as const,
+                key: target.sweepKey,
+                cached: () => resultCache.hasButterfly(target.sweepKey!),
+              }
+            : undefined,
           target.dispersionKey && target.dispersionGrid && target.bandsKey
             ? {
                 kind: "dispersion" as const,
@@ -214,7 +283,7 @@ class ComputeScheduler {
                 bandKey: target.bandsKey,
                 grid: target.dispersionGrid,
                 cached: () =>
-                  resultCache.hasDispersion(target.dispersionKey!),
+                resultCache.hasDispersion(target.dispersionKey!),
               }
             : undefined,
           target.topologyKey
@@ -237,13 +306,6 @@ class ComputeScheduler {
                 key: target.geometryKey,
                 cached: () =>
                   resultCache.hasGeometry(target.geometryKey!),
-              }
-            : undefined,
-          target.sweepKey
-            ? {
-                kind: "butterfly" as const,
-                key: target.sweepKey,
-                cached: () => resultCache.hasButterfly(target.sweepKey!),
               }
             : undefined,
         ].filter((job) => job !== undefined);
@@ -307,13 +369,29 @@ class ComputeScheduler {
     key: string,
     id: string,
   ) {
-    this.active = { kind, key, requestId: id };
+    let cancel: () => void = () => undefined;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(new Error("cancelled"));
+    });
+    this.active = { kind, key, requestId: id, cancelled, cancel };
     useAppStore.getState().setActiveRequest(id);
+  }
+
+  private async runActive<T>(id: string, operation: Promise<T>) {
+    const active = this.active;
+    if (!active || active.requestId !== id) {
+      throw new Error("cancelled");
+    }
+    return Promise.race([operation, active.cancelled]);
   }
 
   private clearActive(id: string) {
     if (this.active?.requestId !== id) return;
     this.active = undefined;
+    if (this.abortRequestId === id) {
+      this.abortRequestId = undefined;
+      this.abortPromise = undefined;
+    }
     useAppStore.getState().setActiveRequest(undefined);
   }
 
@@ -321,6 +399,7 @@ class ComputeScheduler {
     key: string,
     parameters: ScientificParameters,
   ) {
+    await this.engineBarrier;
     const id = requestId("lattice");
     const store = useAppStore.getState();
     resultCache.beginLattice(key);
@@ -332,7 +411,10 @@ class ComputeScheduler {
       message: "Constructing lattice geometry",
     });
     try {
-      const result = await engine.computeLattice(id, parameters);
+      const result = await this.runActive(
+        id,
+        engine.computeLattice(id, parameters),
+      );
       resultCache.setLattice(result, key);
       if (resultCache.isExpected("lattice", key)) {
         store.setProgress({
@@ -358,6 +440,7 @@ class ComputeScheduler {
   }
 
   private async computeBands(key: string, parameters: ScientificParameters) {
+    await this.engineBarrier;
     const id = requestId("bands");
     const store = useAppStore.getState();
     resultCache.beginBands(key);
@@ -369,7 +452,10 @@ class ComputeScheduler {
       message: "Diagonalizing the momentum grid",
     });
     try {
-      const result = await engine.computeBands(id, parameters);
+      const result = await this.runActive(
+        id,
+        engine.computeBands(id, parameters),
+      );
       resultCache.setBands(result, key);
       if (resultCache.isExpected("bands", key)) {
         useAppStore
@@ -403,6 +489,7 @@ class ComputeScheduler {
     key: string,
     parameters: ScientificParameters,
   ) {
+    await this.engineBarrier;
     const id = requestId("butterfly");
     const store = useAppStore.getState();
     resultCache.beginButterfly(id, key);
@@ -414,21 +501,24 @@ class ComputeScheduler {
       message: "Starting the flux sweep",
     });
     try {
-      const elapsedMs = await engine.computeButterfly(
+      const elapsedMs = await this.runActive(
         id,
-        parameters,
-        (chunk) => {
-          resultCache.appendButterfly(chunk);
-          if (!resultCache.isExpected("butterfly", key)) return;
-          store.setProgress({
-            phase: chunk.progress < 1 ? "computing" : "rendering",
-            fraction: chunk.progress,
-            message:
-              chunk.progress < 1
-                ? `Computing flux batches · ${Math.round(chunk.progress * 100)}%`
-                : "Rendering the completed spectrum",
-          });
-        },
+        engine.computeButterfly(
+          id,
+          parameters,
+          (chunk) => {
+            resultCache.appendButterfly(chunk);
+            if (!resultCache.isExpected("butterfly", key)) return;
+            store.setProgress({
+              phase: chunk.progress < 1 ? "computing" : "rendering",
+              fraction: chunk.progress,
+              message:
+                chunk.progress < 1
+                  ? `Computing flux batches · ${Math.round(chunk.progress * 100)}%`
+                  : "Rendering the completed spectrum",
+            });
+          },
+        ),
       );
       resultCache.completeButterfly(id, elapsedMs);
       if (resultCache.isExpected("butterfly", key)) {
@@ -462,6 +552,7 @@ class ComputeScheduler {
     selectedBand: number,
     parameters: ScientificParameters,
   ) {
+    await this.engineBarrier;
     const snapshot = resultCache.getSnapshot();
     const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
     if (!bands) {
@@ -499,12 +590,15 @@ class ComputeScheduler {
               ? ` · pass ${pass + 1}/${plan.levels.length}`
               : ""),
         });
-        const result = await engine.computeTopology(
+        const result = await this.runActive(
           id,
-          parameters,
-          groups,
-          grid.samplesX,
-          grid.samplesY,
+          engine.computeTopology(
+            id,
+            parameters,
+            groups,
+            grid.samplesX,
+            grid.samplesY,
+          ),
         );
         totalElapsedMs += result.elapsedMs;
         const certified =
@@ -566,6 +660,7 @@ class ComputeScheduler {
     grid: DispersionRefinementGrid,
     parameters: ScientificParameters,
   ) {
+    await this.engineBarrier;
     const snapshot = resultCache.getSnapshot();
     const bands = snapshot.bandsKey === bandKey ? snapshot.bands : undefined;
     if (!bands) {
@@ -584,11 +679,14 @@ class ComputeScheduler {
       message: "Optimizing energy detail for the current view",
     });
     try {
-      const result = await engine.computeDispersion(
+      const result = await this.runActive(
         id,
-        parameters,
-        grid.surfaceSamples,
-        grid.pathSamplesPerSegment,
+        engine.computeDispersion(
+          id,
+          parameters,
+          grid.surfaceSamples,
+          grid.pathSamplesPerSegment,
+        ),
       );
       resultCache.setDispersion(result, key);
       if (resultCache.isExpected("dispersion", key)) {
@@ -619,6 +717,7 @@ class ComputeScheduler {
     key: string,
     parameters: ScientificParameters,
   ) {
+    await this.engineBarrier;
     const id = requestId("geometry");
     const store = useAppStore.getState();
     resultCache.beginGeometry(key);
@@ -630,7 +729,10 @@ class ComputeScheduler {
       message: "Computing two offset quantum-geometry grids",
     });
     try {
-      const result = await engine.computeGeometry(id, parameters);
+      const result = await this.runActive(
+        id,
+        engine.computeGeometry(id, parameters),
+      );
       resultCache.setGeometry(result, key);
       if (resultCache.isExpected("geometry", key)) {
         store.setProgress({
@@ -659,13 +761,7 @@ class ComputeScheduler {
     this.desired = undefined;
     this.cancelRequested = true;
     const activeKind = this.active?.kind;
-    if (this.active) {
-      if (this.active.kind === "butterfly") {
-        await engine.cancel(this.active.requestId);
-      } else {
-        await engine.abort(this.active.requestId);
-      }
-    }
+    await this.abortActive();
     return activeKind;
   }
 }
@@ -714,18 +810,36 @@ export function useCompute() {
   }, []);
 
   useEffect(() => {
+    const generation = ++computeScheduleGeneration;
     if (!runtimeReady) return;
-    const timeout = window.setTimeout(() => {
+    const baseComputations = desiredComputations(
+      parameters,
+      geometryRequested,
+      selectedBand,
+      bandCutZoom,
+      false,
+    );
+    scheduler.deferUntilSettled(baseComputations);
+    const baseTimeout = window.setTimeout(() => {
+      if (generation !== computeScheduleGeneration) return;
+      scheduler.schedule(baseComputations);
+    }, BASE_COMPUTE_SETTLE_MS);
+    const refinementTimeout = window.setTimeout(() => {
+      if (generation !== computeScheduleGeneration) return;
       scheduler.schedule(
         desiredComputations(
           parameters,
           geometryRequested,
           selectedBand,
           bandCutZoom,
+          true,
         ),
       );
-    }, 140);
-    return () => window.clearTimeout(timeout);
+    }, REFINEMENT_IDLE_MS);
+    return () => {
+      window.clearTimeout(baseTimeout);
+      window.clearTimeout(refinementTimeout);
+    };
   }, [
     bandCutZoom,
     geometryRequested,
@@ -736,6 +850,7 @@ export function useCompute() {
 }
 
 export async function cancelActiveComputation() {
+  computeScheduleGeneration += 1;
   await scheduler.cancelActive();
   useAppStore.getState().setProgress({
     phase: "idle",

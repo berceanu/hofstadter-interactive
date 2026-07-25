@@ -16,7 +16,7 @@ export const parameterHelp = {
   lattice: {
     label: "Lattice geometry",
     body:
-      "Chooses the Bravais vectors and basis used by HofstadterTools. Named lattices keep their canonical angle; General Bravais and Custom basis expose the cell shape.",
+      "Chooses one of the named lattices provided by HofstadterTools. Each preset supplies its canonical basis and Bravais angle.",
   },
   flux: {
     label: "Magnetic flux φ = p/q",
@@ -31,12 +31,7 @@ export const parameterHelp = {
   anisotropy: {
     label: "Bravais anisotropy α",
     body:
-      "α sets the length of a₂ relative to a₁: α = |a₂|/|a₁|. Named square and triangular lattices fix this ratio; Bravais and multi-site geometries may expose it.",
-  },
-  theta: {
-    label: "Bravais angle θ",
-    body:
-      "The angle between a₁ and a₂ is θ = (numerator/denominator)·π. Named lattices enforce their canonical value; only General Bravais and Custom basis allow edits.",
+      "α sets the length of a₂ relative to a₁: α = |a₂|/|a₁|. Square and triangular lattices fix this ratio; the multi-site honeycomb and Kagome geometries expose it.",
   },
   bandGapThreshold: {
     label: "Band-gap threshold bgt",

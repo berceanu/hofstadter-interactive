@@ -289,7 +289,7 @@ function WorkspacePanel({
 }: {
   id: ResultKind;
   title: string;
-  kicker: string;
+  kicker?: string;
   className?: string;
   tools?: ReactNode;
   help: HelpCopy;
@@ -302,7 +302,7 @@ function WorkspacePanel({
     >
       <header className="workspace-panel-heading">
         <div>
-          <span className="eyebrow">{kicker}</span>
+          {kicker && <span className="eyebrow">{kicker}</span>}
           <div className="result-heading-title">
             <h2>{title}</h2>
             <HelpTooltip copy={help} />
@@ -323,7 +323,6 @@ function ScientificWorkspace() {
     <main className="single-workspace" data-workspace>
       <div className="workspace-commandbar">
         <div>
-          <span className="eyebrow">SINGLE SCIENTIFIC WORKSPACE</span>
           <strong>
             {parameters.lattice} · φ = {parameters.p}/{parameters.q}
           </strong>
@@ -348,7 +347,6 @@ function ScientificWorkspace() {
         <WorkspacePanel
           id="butterfly"
           title="Hofstadter butterfly"
-          kicker="SPECTRAL HERO"
           className="hero-panel"
           tools={<ButterflyTools />}
           help={resultHelp.butterfly}
@@ -358,7 +356,6 @@ function ScientificWorkspace() {
         <WorkspacePanel
           id="wannier"
           title="Wannier diagram"
-          kicker="SHARED FLUX AXIS"
           className="wannier-panel"
           help={resultHelp.wannier}
         >
@@ -424,7 +421,7 @@ export default function App() {
           <span className="brand-mark">H/H</span>
           <span>
             <strong>HARPER / HOFSTADTER</strong>
-            <small>INTERACTIVE LABORATORY</small>
+            <small>TOOLS</small>
           </span>
         </a>
         <div className="topbar-actions">
@@ -445,7 +442,7 @@ export default function App() {
       <ScientificWorkspace />
 
       <footer>
-        <span>GPL-3.0 · Runs entirely in your browser</span>
+        <span>GPL-3.0</span>
         <span>
           Numerical core:{" "}
           <a href="https://hofstadter.tools" target="_blank" rel="noreferrer">

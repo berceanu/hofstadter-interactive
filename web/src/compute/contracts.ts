@@ -2,8 +2,7 @@ export type LatticeKind =
   | "square"
   | "triangular"
   | "honeycomb"
-  | "kagome"
-  | "bravais";
+  | "kagome";
 
 export type ResultKind = "butterfly" | "wannier" | "lattice" | "bands";
 export type ButterflyColorMode = "spectral" | "chern" | "gaps";

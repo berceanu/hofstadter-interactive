@@ -1681,8 +1681,10 @@ export function BandView() {
     geometryStale,
     topology,
     topologyKey,
+    topologyPending,
     dispersion,
     dispersionKey,
+    dispersionPending,
   } = useResultCache();
   const selectedBand = useAppStore((state) => state.selectedBand);
   const setSelectedBand = useAppStore((state) => state.setSelectedBand);
@@ -1747,13 +1749,15 @@ export function BandView() {
     selectedBand,
     baseTopologyGridSufficient(parameters, bands.samples),
   );
-  const topologyRefinementPending =
+  const topologyRefinementNeeded =
     !baseSelectedTopology.resolved
     && topologyPlan.levels.length > 0
     && !refinedTopology;
+  const topologyRefinementPending =
+    topologyRefinementNeeded && topologyPending;
   const topologyUnavailable =
     !refinedSelectedTopology.resolved
-    && !topologyRefinementPending;
+    && topologyPlan.levels.length === 0;
   const dispersionGrid = dispersionRefinementGrid(
     parameters,
     bandCutViewport.zoom,
@@ -1782,10 +1786,15 @@ export function BandView() {
     ),
   );
   const dispersionCanRefine =
-    dispersionGrid.surfaceSamples > bands.samples
-    || dispersionGrid.pathSamplesPerSegment > basePathSamplesPerSegment;
-  const dispersionRefinementPending =
+    bandCutViewport.zoom > 1
+    && (
+      dispersionGrid.surfaceSamples > bands.samples
+      || dispersionGrid.pathSamplesPerSegment > basePathSamplesPerSegment
+    );
+  const dispersionRefinementNeeded =
     dispersionCanRefine && !exactDispersion;
+  const dispersionRefinementPending =
+    dispersionRefinementNeeded && dispersionPending;
   const pathData: BandPathData = refinedDispersion ?? bands;
   const selectedPathIndex = Math.round(
     selectedMomentumState.fraction
@@ -1896,6 +1905,7 @@ export function BandView() {
         geometryStale ? "geometry-stale" : "",
       ].filter(Boolean).join(" ")}
       data-recomputing={bandsStale}
+      data-scheduled-band-zoom={storedBandCutZoom.toFixed(3)}
     >
       {bandsStale && (
         <div className="recompute-chip" role="status">
@@ -1923,8 +1933,10 @@ export function BandView() {
               data-dispersion-resolution={
                 dispersionRefinementPending
                   ? "refining"
-                  : refinedDispersion
+                  : exactDispersion
                     ? "optimized"
+                    : dispersionRefinementNeeded
+                      ? "queued"
                     : "base-optimal"
               }
               data-topology-resolution={
@@ -1932,6 +1944,8 @@ export function BandView() {
                   ? "resolved"
                   : topologyRefinementPending
                     ? "resolving"
+                    : topologyRefinementNeeded
+                      ? "queued"
                     : "unavailable"
               }
             >
@@ -1958,7 +1972,9 @@ export function BandView() {
                     ? "Berry and Wilson invariants verified"
                     : topologyUnavailable
                       ? "No certified invariant is available within the interactive compute budget"
-                      : "The selected invariant is being resolved automatically"
+                      : topologyRefinementPending
+                        ? "The selected invariant is being resolved automatically"
+                        : "The selected invariant will resolve after parameter interaction settles"
                 }
               >
                 {grouped

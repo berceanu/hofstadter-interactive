@@ -26,9 +26,11 @@ interface CacheSnapshot {
   topology?: TopologyResult;
   topologyKey?: string;
   topologyStale: boolean;
+  topologyPending: boolean;
   dispersion?: DispersionResult;
   dispersionKey?: string;
   dispersionStale: boolean;
+  dispersionPending: boolean;
 }
 
 export class ResultCache {
@@ -39,7 +41,9 @@ export class ResultCache {
     latticeStale: false,
     geometryStale: false,
     topologyStale: false,
+    topologyPending: false,
     dispersionStale: false,
+    dispersionPending: false,
   };
   private expectedButterflyKey?: string;
   private expectedBandsKey?: string;
@@ -140,6 +144,7 @@ export class ResultCache {
     this.publish({
       ...(cached ? { topology: cached, topologyKey: key } : {}),
       topologyStale: !cached && Boolean(this.snapshot.topology),
+      topologyPending: !cached,
     });
     return Boolean(cached);
   }
@@ -150,6 +155,7 @@ export class ResultCache {
     this.publish({
       ...(cached ? { dispersion: cached, dispersionKey: key } : {}),
       dispersionStale: !cached && Boolean(this.snapshot.dispersion),
+      dispersionPending: !cached,
     });
     return Boolean(cached);
   }
@@ -307,10 +313,16 @@ export class ResultCache {
     this.expectedTopologyKey ??= key;
   }
 
-  clearTopologyExpectation(key: string) {
-    if (this.expectedTopologyKey !== key) return;
+  clearTopologyExpectation(key?: string) {
+    if (key !== undefined && this.expectedTopologyKey !== key) return;
+    if (
+      this.expectedTopologyKey === undefined
+      && !this.snapshot.topologyStale
+    ) {
+      return;
+    }
     this.expectedTopologyKey = undefined;
-    this.publish({ topologyStale: false });
+    this.publish({ topologyStale: false, topologyPending: false });
   }
 
   setTopology(result: TopologyResult, key = result.requestId) {
@@ -320,6 +332,7 @@ export class ResultCache {
       topology: result,
       topologyKey: key,
       topologyStale: false,
+      topologyPending: false,
     });
   }
 
@@ -327,10 +340,16 @@ export class ResultCache {
     this.expectedDispersionKey ??= key;
   }
 
-  clearDispersionExpectation(key: string) {
-    if (this.expectedDispersionKey !== key) return;
+  clearDispersionExpectation(key?: string) {
+    if (key !== undefined && this.expectedDispersionKey !== key) return;
+    if (
+      this.expectedDispersionKey === undefined
+      && !this.snapshot.dispersionStale
+    ) {
+      return;
+    }
     this.expectedDispersionKey = undefined;
-    this.publish({ dispersionStale: false });
+    this.publish({ dispersionStale: false, dispersionPending: false });
   }
 
   setDispersion(result: DispersionResult, key = result.requestId) {
@@ -340,6 +359,7 @@ export class ResultCache {
       dispersion: result,
       dispersionKey: key,
       dispersionStale: false,
+      dispersionPending: false,
     });
   }
 
@@ -363,9 +383,15 @@ export class ResultCache {
     } else if (kind === "geometry") {
       this.publish({ geometryStale: Boolean(this.snapshot.geometry) });
     } else if (kind === "topology") {
-      this.publish({ topologyStale: Boolean(this.snapshot.topology) });
+      this.publish({
+        topologyStale: Boolean(this.snapshot.topology),
+        topologyPending: false,
+      });
     } else {
-      this.publish({ dispersionStale: Boolean(this.snapshot.dispersion) });
+      this.publish({
+        dispersionStale: Boolean(this.snapshot.dispersion),
+        dispersionPending: false,
+      });
     }
   }
 }

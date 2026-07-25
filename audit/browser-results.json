@@ -1,15 +1,15 @@
 {
   "schema": "hofstadter-interactive/browser-audit/1",
-  "generated_at": "2026-07-25T14:04:07.987Z",
+  "generated_at": "2026-07-25T17:54:46.345Z",
   "provenance": {
-    "source_commit": "e16fb58aa022e892fd3f6cef1d5c3e9d86bc4821",
-    "source_tree_sha256": "2acb1bd4928f759de9dbbb16dc8c3d7b9dc277fac39a5e0c57cec31068569b03",
-    "source_file_count": 207
+    "source_commit": "18c4939d649819e41431f8551530640f634b94a2",
+    "source_tree_sha256": "b17bacbe52e87de507a47368c74444bf503be0e114c28f65b4cf723bdd32ecef",
+    "source_file_count": 201
   },
   "status": "pass",
   "command": "playwright test --reporter=line,json",
   "review_verdict": {
-    "confirmed_findings_fixed": 12,
+    "confirmed_findings_fixed": 8,
     "summary": "The browser matrix is generated from the current Playwright run; static screenshots are retained only as historical visual context."
   },
   "friend_claims": [],
@@ -41,28 +41,8 @@
     },
     {
       "severity": "medium",
-      "finding": "Lattice CSV links used the wrong record stride.",
-      "resolution": "Link exports now use all six fields: endpoints, neighbor shell, and amplitude."
-    },
-    {
-      "severity": "medium",
-      "finding": "NPZ import accepted incomplete and non-finite physical data.",
-      "resolution": "The importer requires versioned state arrays and an exact topology flag, validates finite/order/range/gap consistency, and checks file size before reading."
-    },
-    {
-      "severity": "medium",
-      "finding": "A cancelled geometry request could leave band exports disabled.",
-      "resolution": "Geometry expectations clear when no longer requested, and export gating only waits for currently requested geometry."
-    },
-    {
-      "severity": "medium",
       "finding": "All-zero generic hopping and extreme amplitudes reached NumPy failures.",
       "resolution": "Browser and Python boundaries bound amplitudes and return a clear domain error for undefined all-zero generic models."
-    },
-    {
-      "severity": "medium",
-      "finding": "Shared URLs omitted the active analysis state.",
-      "resolution": "Color, palette, surface metric, geometry table, band, cut zoom, linked momentum, and butterfly transform now round-trip."
     },
     {
       "severity": "low",
@@ -77,331 +57,141 @@
   ],
   "final_checks": [
     {
-      "scenario": "app.spec.ts › loads the scientific workspace and keeps state in the URL",
+      "scenario": "app.spec.ts › loads the scientific workspace and updates local state",
       "status": "pass",
-      "detail": "877 ms across 1 project run(s)."
+      "detail": "810 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › the primary navigation remains usable on a mobile viewport",
+      "scenario": "app.spec.ts › shows every primary result in the single workspace",
       "status": "pass",
-      "detail": "398 ms across 1 project run(s)."
+      "detail": "433 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › edits the magnetic flux as one canonical p/q pair",
       "status": "pass",
-      "detail": "406 ms across 1 project run(s)."
+      "detail": "675 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › runs the real Pyodide butterfly computation to completion",
       "status": "pass",
-      "detail": "2707 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › normalizes invalid scientific parameters before computation",
-      "status": "pass",
-      "detail": "2619 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › repairs a malicious honeycomb angle before running the spectrum",
-      "status": "pass",
-      "detail": "3239 ms across 1 project run(s)."
+      "detail": "4565 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › renders a bounded Wigner–Seitz magnetic Brillouin zone",
       "status": "pass",
-      "detail": "2646 ms across 1 project run(s)."
+      "detail": "3050 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › uses gauge-invariant Chern groups for touching bands",
       "status": "pass",
-      "detail": "3460 ms across 1 project run(s)."
+      "detail": "4785 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › keeps cancellation final and exports computed artifacts",
+      "scenario": "app.spec.ts › keeps cancellation final",
       "status": "pass",
-      "detail": "6040 ms across 1 project run(s)."
+      "detail": "5738 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › streams the butterfly progressively and repaints it after a responsive resize",
+      "scenario": "app.spec.ts › streams the butterfly progressively",
       "status": "pass",
-      "detail": "12553 ms across 1 project run(s)."
+      "detail": "18873 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend",
       "status": "pass",
-      "detail": "2775 ms across 1 project run(s)."
+      "detail": "5015 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › renders the Avron gap plane with Hall-conductivity segments",
       "status": "pass",
-      "detail": "2876 ms across 1 project run(s)."
+      "detail": "5663 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › links a clicked symmetry-cut momentum to the 3D surface marker",
       "status": "pass",
-      "detail": "3299 ms across 1 project run(s)."
+      "detail": "4522 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › selects thin bands forgivingly and scrubs momentum in real time",
       "status": "pass",
-      "detail": "3916 ms across 1 project run(s)."
+      "detail": "5245 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › adapts path detail to linked-cut zoom without recomputing bands",
       "status": "pass",
-      "detail": "5142 ms across 1 project run(s)."
+      "detail": "8614 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › plots branch-safe Wilson phases and links a k2 row to the surface",
       "status": "pass",
-      "detail": "3417 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › exports six-field lattice links without corrupting record boundaries",
-      "status": "pass",
-      "detail": "2629 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › rejects an oversized band grid before allocating it",
-      "status": "pass",
-      "detail": "2627 ms across 1 project run(s)."
+      "detail": "4800 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › automatically resolves an aliased q=31 Wilson loop",
       "status": "pass",
-      "detail": "10327 ms across 1 project run(s)."
+      "detail": "11317 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › automatically refines q=31 dispersion without detaching the lifted symmetry path",
+      "scenario": "app.spec.ts › refines q=31 dispersion lazily on zoom without detaching the lifted symmetry path",
       "status": "pass",
-      "detail": "6735 ms across 1 project run(s)."
+      "detail": "16851 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › links property-table hover and selection to the band group",
       "status": "pass",
-      "detail": "3243 ms across 1 project run(s)."
+      "detail": "4786 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › links symmetry points, both BZ outlines, and the lifted 3D path",
       "status": "pass",
-      "detail": "3465 ms across 1 project run(s)."
+      "detail": "4878 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › drags the shared coprime flux cursor without launching another sweep",
+      "scenario": "app.spec.ts › drags the linked coprime flux cursor without launching another sweep",
       "status": "pass",
-      "detail": "4198 ms across 1 project run(s)."
+      "detail": "7319 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › coalesces rapid slider edits before launching base and refinement jobs",
+      "status": "pass",
+      "detail": "5976 ms across 1 project run(s)."
+    },
+    {
+      "scenario": "app.spec.ts › settles the current-flux bands at 23/31 before idle refinements",
+      "status": "pass",
+      "detail": "12194 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › keeps stale workspace plots visible and dimmed during replacement",
       "status": "pass",
-      "detail": "11222 ms across 1 project run(s)."
+      "detail": "6028 ms across 1 project run(s)."
     },
     {
-      "scenario": "app.spec.ts › falls back from the workspace to tabs below 1100px",
+      "scenario": "app.spec.ts › states the desktop viewport requirement below 1200px",
       "status": "pass",
-      "detail": "318 ms across 1 project run(s)."
+      "detail": "386 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › loads quantum geometry only after the user asks for it",
       "status": "pass",
-      "detail": "3118 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › exports a clean three-times-scale art PNG",
-      "status": "pass",
-      "detail": "2927 ms across 1 project run(s)."
+      "detail": "5709 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › marks unsupported fast topology as unavailable instead of physical C = 0",
       "status": "pass",
-      "detail": "2683 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › switches among the Avron, jet, and red-blue topology palettes",
-      "status": "pass",
-      "detail": "2273 ms across 1 project run(s)."
+      "detail": "4546 ms across 1 project run(s)."
     },
     {
       "scenario": "app.spec.ts › morphs the selected energy sheet into an educational BZ torus",
       "status": "pass",
-      "detail": "3606 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › loads a custom basis through the upstream generic lattice path",
-      "status": "pass",
-      "detail": "2366 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › restores an exported NPZ without launching a replacement sweep",
-      "status": "pass",
-      "detail": "4187 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › loads the scientific workspace and keeps state in the URL",
-      "status": "pass",
-      "detail": "817 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › the primary navigation remains usable on a mobile viewport",
-      "status": "pass",
-      "detail": "345 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › edits the magnetic flux as one canonical p/q pair",
-      "status": "pass",
-      "detail": "383 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › runs the real Pyodide butterfly computation to completion",
-      "status": "pass",
-      "detail": "2692 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › normalizes invalid scientific parameters before computation",
-      "status": "pass",
-      "detail": "2644 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › repairs a malicious honeycomb angle before running the spectrum",
-      "status": "pass",
-      "detail": "3240 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › renders a bounded Wigner–Seitz magnetic Brillouin zone",
-      "status": "pass",
-      "detail": "2669 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › uses gauge-invariant Chern groups for touching bands",
-      "status": "pass",
-      "detail": "3769 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › keeps cancellation final and exports computed artifacts",
-      "status": "pass",
-      "detail": "6181 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › streams the butterfly progressively and repaints it after a responsive resize",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › renders the Avron gap plane with Hall-conductivity segments",
-      "status": "pass",
-      "detail": "2950 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › links a clicked symmetry-cut momentum to the 3D surface marker",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › selects thin bands forgivingly and scrubs momentum in real time",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › adapts path detail to linked-cut zoom without recomputing bands",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › plots branch-safe Wilson phases and links a k2 row to the surface",
-      "status": "pass",
-      "detail": "4206 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › exports six-field lattice links without corrupting record boundaries",
-      "status": "pass",
-      "detail": "2657 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › rejects an oversized band grid before allocating it",
-      "status": "pass",
-      "detail": "2622 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › automatically resolves an aliased q=31 Wilson loop",
-      "status": "pass",
-      "detail": "10536 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › automatically refines q=31 dispersion without detaching the lifted symmetry path",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › links property-table hover and selection to the band group",
-      "status": "pass",
-      "detail": "3783 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › links symmetry points, both BZ outlines, and the lifted 3D path",
-      "status": "pass",
-      "detail": "4467 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › drags the shared coprime flux cursor without launching another sweep",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › keeps stale workspace plots visible and dimmed during replacement",
-      "status": "pass-skipped",
-      "detail": "Explicitly skipped by the project matrix."
-    },
-    {
-      "scenario": "app.spec.ts › falls back from the workspace to tabs below 1100px",
-      "status": "pass",
-      "detail": "335 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › loads quantum geometry only after the user asks for it",
-      "status": "pass",
-      "detail": "4095 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › exports a clean three-times-scale art PNG",
-      "status": "pass",
-      "detail": "2935 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › marks unsupported fast topology as unavailable instead of physical C = 0",
-      "status": "pass",
-      "detail": "2698 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › switches among the Avron, jet, and red-blue topology palettes",
-      "status": "pass",
-      "detail": "2785 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › morphs the selected energy sheet into an educational BZ torus",
-      "status": "pass",
-      "detail": "4932 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › loads a custom basis through the upstream generic lattice path",
-      "status": "pass",
-      "detail": "2907 ms across 1 project run(s)."
-    },
-    {
-      "scenario": "app.spec.ts › restores an exported NPZ without launching a replacement sweep",
-      "status": "pass",
-      "detail": "5223 ms across 1 project run(s)."
+      "detail": "5051 ms across 1 project run(s)."
     }
   ],
   "additional_checks": [
     {
       "scenario": "generated-browser-matrix",
       "status": "pass",
-      "detail": "64 Playwright specifications recorded; 0 failed."
+      "detail": "26 Playwright specifications recorded; 0 failed."
     }
   ],
   "limitations": [

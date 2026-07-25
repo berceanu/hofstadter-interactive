@@ -5,7 +5,7 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 const started = performance.now();
 await page.goto(
-  `${baseURL}/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&tn=1&td=2&period=1&samp=17`,
+  `${baseURL}/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&period=1&samp=17`,
 );
 await page.locator(".runtime-status").waitFor({ state: "visible" });
 await page.locator(".phase-computing").waitFor({
