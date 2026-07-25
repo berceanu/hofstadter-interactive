@@ -104,6 +104,8 @@ Trust and delivery:
   `check:smoke`, and the comprehensive `check:release` matrix so ordinary edit
   loops do not repeatedly pay for every native, Pyodide, desktop, and mobile
   test.
+- Retry a failed Playwright case once in CI, preserving fail-fast local runs
+  and activating the existing first-retry trace for diagnosing flakes.
 
 ### Interface guidance
 

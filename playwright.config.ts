@@ -8,6 +8,7 @@ const port = Number(process.env.PW_PORT ?? 4173);
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: "on-first-retry",
