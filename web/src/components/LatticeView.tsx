@@ -43,7 +43,7 @@ function equalAspectProjection(points: [number, number][], box: PlotBox) {
   };
 }
 
-export function LatticeView({ compact = false }: { compact?: boolean }) {
+export function LatticeView() {
   const { lattice, latticeStale } = useResultCache();
   const parameters = useAppStore((state) => state.parameters);
   const latticeName = parameters.lattice;
@@ -103,7 +103,6 @@ export function LatticeView({ compact = false }: { compact?: boolean }) {
       className={[
         "plot-shell",
         "lattice-shell",
-        compact ? "compact" : "",
         latticeStale ? "is-stale" : "",
       ].filter(Boolean).join(" ")}
       data-recomputing={latticeStale}

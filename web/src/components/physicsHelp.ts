@@ -1,4 +1,4 @@
-import type { ViewKind } from "../compute/contracts";
+import type { ResultKind } from "../compute/contracts";
 
 export interface HelpCopy {
   label: string;
@@ -66,7 +66,7 @@ export const resultHelp = {
     body:
       "At the selected p/q, this combines Eₙ(k), the high-symmetry cut and density of states, Wilson-loop topology, Berry or quantum-metric fields, and the upstream band-property table.",
   },
-} satisfies Record<ViewKind, HelpCopy>;
+} satisfies Record<ResultKind, HelpCopy>;
 
 export const bandResultHelp = {
   cut: {

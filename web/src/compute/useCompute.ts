@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import type {
-  FocusKind,
   ScientificParameters,
   TopologyResult,
-  ViewKind,
 } from "./contracts";
 import { PyodideWorkerEngine } from "./workerEngine";
 import { resultCache } from "../state/resultCache";
@@ -66,20 +64,11 @@ interface DesiredComputations {
 
 function desiredComputations(
   parameters: ScientificParameters,
-  focus: FocusKind,
-  view: ViewKind,
-  workspaceWide: boolean,
   geometryRequested: boolean,
   selectedBand: number,
   bandCutZoom: number,
 ): DesiredComputations {
-  const workspace = workspaceWide && focus === "workspace";
-  const active = focus === "workspace" ? view : focus;
-  const needsSweep =
-    workspace || active === "butterfly" || active === "wannier";
-  const needsBands = workspace || active === "bands";
-  const needsLattice = workspace || active === "lattice";
-  const bandsKey = needsBands ? bandComputationKey(parameters) : undefined;
+  const bandsKey = bandComputationKey(parameters);
   const snapshot = resultCache.getSnapshot();
   const knownBands =
     bandsKey && snapshot.bandsKey === bandsKey ? snapshot.bands : undefined;
@@ -97,9 +86,9 @@ function desiredComputations(
     || dispersionGrid.pathSamplesPerSegment > basePathSamples;
   return {
     parameters,
-    ...(needsSweep ? { sweepKey: sweepComputationKey(parameters) } : {}),
-    ...(bandsKey ? { bandsKey } : {}),
-    ...(needsBands && geometryRequested
+    sweepKey: sweepComputationKey(parameters),
+    bandsKey,
+    ...(geometryRequested
       ? { geometryKey: bandComputationKey(parameters) }
       : {}),
     ...(bandsKey && topologyPlan.levels.length
@@ -122,9 +111,7 @@ function desiredComputations(
           dispersionGrid,
         }
       : {}),
-    ...(needsLattice
-      ? { latticeKey: latticeComputationKey(parameters) }
-      : {}),
+    latticeKey: latticeComputationKey(parameters),
   };
 }
 
@@ -687,9 +674,6 @@ const scheduler = new ComputeScheduler();
 
 export function useCompute() {
   const parameters = useAppStore((state) => state.parameters);
-  const view = useAppStore((state) => state.view);
-  const focus = useAppStore((state) => state.focus);
-  const workspaceWide = useAppStore((state) => state.workspaceWide);
   const runtimeReady = useAppStore((state) => state.runtimeReady);
   const surfaceMetric = useAppStore((state) => state.surfaceMetric);
   const geometryColumnsExpanded = useAppStore(
@@ -735,9 +719,6 @@ export function useCompute() {
       scheduler.schedule(
         desiredComputations(
           parameters,
-          focus,
-          view,
-          workspaceWide,
           geometryRequested,
           selectedBand,
           bandCutZoom,
@@ -747,13 +728,10 @@ export function useCompute() {
     return () => window.clearTimeout(timeout);
   }, [
     bandCutZoom,
-    focus,
     geometryRequested,
     parameters,
     runtimeReady,
     selectedBand,
-    view,
-    workspaceWide,
   ]);
 }
 

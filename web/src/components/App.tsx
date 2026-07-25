@@ -17,23 +17,15 @@ import {
   retryComputeEngine,
   useCompute,
 } from "../compute/useCompute";
-import type { FocusKind, ViewKind } from "../compute/contracts";
+import type { ResultKind } from "../compute/contracts";
 import { useResultCache } from "../state/resultCache";
 import { useAppStore } from "../state/store";
-import { flattenButterfly } from "../utils/arrays";
 import {
   activeTopologyComputationKey,
   baseTopologyGridSufficient,
   topologyRefinementPlan,
 } from "../compute/computeKeys";
 import { fluxFraction } from "../utils/viewIntegrity";
-
-const views: { id: ViewKind; label: string; short: string }[] = [
-  { id: "butterfly", label: "Butterfly", short: "01" },
-  { id: "wannier", label: "Wannier", short: "02" },
-  { id: "lattice", label: "Lattice + BZ", short: "03" },
-  { id: "bands", label: "Band surfaces", short: "04" },
-];
 
 function RuntimeStatus() {
   const progress = useAppStore((state) => state.progress);
@@ -77,9 +69,7 @@ function RuntimeStatus() {
 
 function SelectionReadout() {
   const point = useAppStore((state) => state.selectedPoint);
-  const view = useAppStore((state) => state.view);
   const parameters = useAppStore((state) => state.parameters);
-  const colorMode = useAppStore((state) => state.colorMode);
   if (!point) {
     return (
       <div className="selection-card muted">
@@ -93,10 +83,8 @@ function SelectionReadout() {
       </div>
     );
   }
-  const isWannier = point.source === "wannier"
-    || (!point.source && view === "wannier");
-  const isGap = point.source === "gap"
-    || (!point.source && colorMode === "gaps" && point.gap !== undefined);
+  const isWannier = point.source === "wannier";
+  const isGap = point.source === "gap";
   const fraction = fluxFraction(point.flux, parameters.q);
   return (
     <div className="selection-card">
@@ -139,7 +127,7 @@ function SelectionReadout() {
   );
 }
 
-function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
+function ButterflyTools() {
   const cache = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
   const setColorMode = useAppStore((state) => state.setColorMode);
@@ -147,44 +135,42 @@ function ButterflyTools({ paletteOnly = false }: { paletteOnly?: boolean }) {
     cache.butterfly?.chunks[0]?.topologyAvailable ?? true;
   return (
     <div className="butterfly-tools">
-      {!paletteOnly && (
-        <div className="segmented" aria-label="Point coloring">
-          <button
-            className={colorMode === "spectral" ? "active" : ""}
-            onClick={() => setColorMode("spectral")}
-          >
-            Energy
-          </button>
-          <button
-            className={
-              colorMode === "chern" && topologyAvailable ? "active" : ""
-            }
-            onClick={() => setColorMode("chern")}
-            disabled={!topologyAvailable}
-            title={
-              topologyAvailable
-                ? "Color states by Diophantine Chern number"
-                : "Fast Diophantine coloring is unavailable for this model"
-            }
-          >
-            {topologyAvailable ? "Chern" : "Chern unavailable"}
-          </button>
-          <button
-            className={
-              colorMode === "gaps" && topologyAvailable ? "active" : ""
-            }
-            onClick={() => setColorMode("gaps")}
-            disabled={!topologyAvailable}
-            title={
-              topologyAvailable
-                ? "Color open spectral gaps by cumulative Chern number tᵣ"
-                : "Gap-plane topology is unavailable for this model"
-            }
-          >
-            Gaps
-          </button>
-        </div>
-      )}
+      <div className="segmented" aria-label="Point coloring">
+        <button
+          className={colorMode === "spectral" ? "active" : ""}
+          onClick={() => setColorMode("spectral")}
+        >
+          Energy
+        </button>
+        <button
+          className={
+            colorMode === "chern" && topologyAvailable ? "active" : ""
+          }
+          onClick={() => setColorMode("chern")}
+          disabled={!topologyAvailable}
+          title={
+            topologyAvailable
+              ? "Color states by Diophantine Chern number"
+              : "Fast Diophantine coloring is unavailable for this model"
+          }
+        >
+          {topologyAvailable ? "Chern" : "Chern unavailable"}
+        </button>
+        <button
+          className={
+            colorMode === "gaps" && topologyAvailable ? "active" : ""
+          }
+          onClick={() => setColorMode("gaps")}
+          disabled={!topologyAvailable}
+          title={
+            topologyAvailable
+              ? "Color open spectral gaps by cumulative Chern number tᵣ"
+              : "Gap-plane topology is unavailable for this model"
+          }
+        >
+          Gaps
+        </button>
+      </div>
     </div>
   );
 }
@@ -292,20 +278,6 @@ function BandTools() {
   );
 }
 
-function viewTitle(view: ViewKind) {
-  if (view === "butterfly") return "Hofstadter butterfly";
-  if (view === "wannier") return "Wannier diagram";
-  if (view === "lattice") return "Lattice geometry";
-  return "Momentum-space bands";
-}
-
-function ViewTools({ view }: { view: ViewKind }) {
-  if (view === "butterfly") return <ButterflyTools />;
-  if (view === "wannier") return <ButterflyTools paletteOnly />;
-  if (view === "bands") return <BandTools />;
-  return null;
-}
-
 function WorkspacePanel({
   id,
   title,
@@ -315,7 +287,7 @@ function WorkspacePanel({
   help,
   children,
 }: {
-  id: ViewKind;
+  id: ResultKind;
   title: string;
   kicker: string;
   className?: string;
@@ -323,8 +295,6 @@ function WorkspacePanel({
   help: HelpCopy;
   children: ReactNode;
 }) {
-  const setFocus = useAppStore((state) => state.setFocus);
-
   return (
     <section
       className={`workspace-panel ${className ?? ""}`}
@@ -340,14 +310,6 @@ function WorkspacePanel({
         </div>
         <div className="workspace-panel-tools">
           {tools}
-          <button
-            className="maximize-button"
-            aria-label={`Maximize ${title} panel`}
-            title="Open focus mode"
-            onClick={() => setFocus(id)}
-          >
-            ↗
-          </button>
         </div>
       </header>
       <div className="workspace-panel-body">{children}</div>
@@ -355,7 +317,7 @@ function WorkspacePanel({
   );
 }
 
-function WorkspaceDashboard() {
+function ScientificWorkspace() {
   const parameters = useAppStore((state) => state.parameters);
   return (
     <main className="single-workspace" data-workspace>
@@ -378,7 +340,7 @@ function WorkspaceDashboard() {
           className="mini-lattice-panel"
           help={resultHelp.lattice}
         >
-          <LatticeView compact />
+          <LatticeView />
         </WorkspacePanel>
       </aside>
 
@@ -391,7 +353,7 @@ function WorkspaceDashboard() {
           tools={<ButterflyTools />}
           help={resultHelp.butterfly}
         >
-          <ButterflyPlot compact />
+          <ButterflyPlot />
         </WorkspacePanel>
         <WorkspacePanel
           id="wannier"
@@ -400,7 +362,7 @@ function WorkspaceDashboard() {
           className="wannier-panel"
           help={resultHelp.wannier}
         >
-          <ButterflyPlot wannier compact />
+          <ButterflyPlot wannier />
         </WorkspacePanel>
       </div>
 
@@ -413,7 +375,7 @@ function WorkspaceDashboard() {
           tools={<BandTools />}
           help={resultHelp.bands}
         >
-          <BandView compact />
+          <BandView />
         </WorkspacePanel>
         <SelectionReadout />
       </div>
@@ -421,101 +383,18 @@ function WorkspaceDashboard() {
   );
 }
 
-function FocusedView({ view }: { view: ViewKind }) {
-  const parameters = useAppStore((state) => state.parameters);
-  const cache = useResultCache();
-  const butterfly = flattenButterfly(cache.butterfly);
-  const help = resultHelp[view];
-
-  return (
-    <main className="workspace focused-workspace">
-      <ParameterPanel />
-      <section className="visualization-area">
-        <div className="visualization-header">
-          <div>
-            <span className="eyebrow">LOCAL QUANTUM SPECTRUM</span>
-            <div className="result-heading-title">
-              <h1>{viewTitle(view)}</h1>
-              <HelpTooltip copy={help} />
-            </div>
-            <p>
-              {parameters.lattice} lattice · t = [
-              {parameters.hoppings.join(", ")}] ·{" "}
-              {view === "butterfly" || view === "wannier"
-                ? `q = ${parameters.q}`
-                : `φ = ${parameters.p}/${parameters.q}`}
-            </p>
-          </div>
-          <div className="view-tools">
-            <ViewTools view={view} />
-          </div>
-        </div>
-
-        <RuntimeStatus />
-
-        <div className="visualization-body">
-          {view === "butterfly" && <ButterflyPlot />}
-          {view === "wannier" && <ButterflyPlot wannier />}
-          {view === "lattice" && <LatticeView />}
-          {view === "bands" && <BandView />}
-        </div>
-
-        <div className="bottom-deck">
-          {(view === "butterfly" || view === "wannier") && (
-            <SelectionReadout />
-          )}
-          <div className="result-stats">
-            <span className="eyebrow">RESULT</span>
-            <strong>
-              {view === "butterfly"
-                ? `${butterfly.energy.length.toLocaleString()} states`
-                : view === "wannier"
-                  ? `${butterfly.gap.length.toLocaleString()} gaps`
-                  : view === "bands" && cache.bands
-                    ? `${cache.bands.bands} bands`
-                    : cache.lattice
-                      ? `${cache.lattice.sites.length / 2} sites`
-                      : "—"}
-            </strong>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
-
 export default function App() {
   useCompute();
-  const view = useAppStore((state) => state.view);
-  const focus = useAppStore((state) => state.focus);
-  const workspaceWide = useAppStore((state) => state.workspaceWide);
-  const setView = useAppStore((state) => state.setView);
-  const setFocus = useAppStore((state) => state.setFocus);
-  const setWorkspaceWide = useAppStore((state) => state.setWorkspaceWide);
   const colorMode = useAppStore((state) => state.colorMode);
   const setColorMode = useAppStore((state) => state.setColorMode);
   const counters = useAppStore((state) => state.computeCounters);
   const cache = useResultCache();
   const topologyAvailable =
     cache.butterfly?.chunks[0]?.topologyAvailable ?? true;
-  const showWorkspace = workspaceWide && focus === "workspace";
-  const activeNavigation: FocusKind = workspaceWide ? focus : view;
 
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 1100px)");
-    const update = () => setWorkspaceWide(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, [setWorkspaceWide]);
-
-  useEffect(() => {
-    document.title = `${
-      showWorkspace
-        ? "Workspace"
-        : views.find((item) => item.id === view)?.label
-    } · Harper / Hofstadter`;
-  }, [showWorkspace, view]);
+    document.title = "Workspace · Harper / Hofstadter";
+  }, []);
 
   useEffect(() => {
     if (
@@ -548,34 +427,6 @@ export default function App() {
             <small>INTERACTIVE LABORATORY</small>
           </span>
         </a>
-        <nav className="view-nav" aria-label="Visualization">
-          <button
-            className={`workspace-nav-button ${
-              activeNavigation === "workspace" ? "active" : ""
-            }`}
-            onClick={() => setFocus("workspace")}
-            aria-current={
-              activeNavigation === "workspace" ? "page" : undefined
-            }
-          >
-            <span>00</span>Workspace
-          </button>
-          {views.map((item) => (
-            <button
-              key={item.id}
-              className={activeNavigation === item.id ? "active" : ""}
-              onClick={() => {
-                if (workspaceWide) setFocus(item.id);
-                else setView(item.id);
-              }}
-              aria-current={
-                activeNavigation === item.id ? "page" : undefined
-              }
-            >
-              <span>{item.short}</span>{item.label}
-            </button>
-          ))}
-        </nav>
         <div className="topbar-actions">
           <a
             className="source-link"
@@ -588,7 +439,10 @@ export default function App() {
         </div>
       </header>
 
-      {showWorkspace ? <WorkspaceDashboard /> : <FocusedView view={view} />}
+      <div className="desktop-required" role="status">
+        This scientific workspace requires a desktop-sized window.
+      </div>
+      <ScientificWorkspace />
 
       <footer>
         <span>GPL-3.0 · Runs entirely in your browser</span>

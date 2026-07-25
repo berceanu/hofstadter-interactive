@@ -1672,7 +1672,7 @@ function WilsonPlot({
   );
 }
 
-export function BandView({ compact = false }: { compact?: boolean }) {
+export function BandView() {
   const {
     bands,
     bandsKey,
@@ -1892,7 +1892,6 @@ export function BandView({ compact = false }: { compact?: boolean }) {
     <div
       className={[
         "bands-layout",
-        compact ? "compact" : "",
         bandsStale ? "is-stale" : "",
         geometryStale ? "geometry-stale" : "",
       ].filter(Boolean).join(" ")}

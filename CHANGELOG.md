@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Lean edition
 
+- Replace the dual workspace/focus interface with one persistent desktop
+  scientific workspace. Remove visualization routing, panel maximization,
+  compact/full render variants, responsive tab fallback, and mobile browser
+  coverage; windows narrower than 1200 px now receive an explicit desktop
+  requirement notice.
+- Schedule the sweep, lattice, and current-flux band preview directly from
+  their exact scientific dependencies instead of interpreting viewport and
+  focus state. Topology, dispersion refinement, and quantum geometry remain
+  lazy and separately cached.
 - Remove browser CSV, NPZ, ordinary PNG, art PNG, and whole-workspace export,
   along with NPZ file-picker and drag-and-drop import.
 - Remove URL hydration, automatic URL synchronization, and copy-link controls;

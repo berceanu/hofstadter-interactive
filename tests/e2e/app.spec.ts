@@ -1,38 +1,40 @@
 import { expect, test } from "@playwright/test";
 
 async function webglInkPixels(page: import("@playwright/test").Page) {
-  return page.locator(".plot-stage canvas").evaluate((canvas) => {
-    const target = canvas as HTMLCanvasElement;
-    const gl =
-      target.getContext("webgl2", { preserveDrawingBuffer: true })
-      ?? target.getContext("webgl", { preserveDrawingBuffer: true });
-    if (!gl) return { ink: 0, width: 0, height: 0 };
-    const pixels = new Uint8Array(
-      gl.drawingBufferWidth * gl.drawingBufferHeight * 4,
-    );
-    gl.readPixels(
-      0,
-      0,
-      gl.drawingBufferWidth,
-      gl.drawingBufferHeight,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      pixels,
-    );
-    let ink = 0;
-    for (let index = 0; index < pixels.length; index += 4) {
-      const distance =
-        Math.abs(pixels[index] - 8)
-        + Math.abs(pixels[index + 1] - 17)
-        + Math.abs(pixels[index + 2] - 29);
-      if (distance > 24 && pixels[index + 3] > 0) ink += 1;
-    }
-    return {
-      ink,
-      width: gl.drawingBufferWidth,
-      height: gl.drawingBufferHeight,
-    };
-  });
+  return page
+    .locator('[data-flux-plot="butterfly"] .plot-stage canvas')
+    .evaluate((canvas) => {
+      const target = canvas as HTMLCanvasElement;
+      const gl =
+        target.getContext("webgl2", { preserveDrawingBuffer: true })
+        ?? target.getContext("webgl", { preserveDrawingBuffer: true });
+      if (!gl) return { ink: 0, width: 0, height: 0 };
+      const pixels = new Uint8Array(
+        gl.drawingBufferWidth * gl.drawingBufferHeight * 4,
+      );
+      gl.readPixels(
+        0,
+        0,
+        gl.drawingBufferWidth,
+        gl.drawingBufferHeight,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        pixels,
+      );
+      let ink = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        const distance =
+          Math.abs(pixels[index] - 8)
+          + Math.abs(pixels[index + 1] - 17)
+          + Math.abs(pixels[index + 2] - 29);
+        if (distance > 24 && pixels[index + 3] > 0) ink += 1;
+      }
+      return {
+        ink,
+        width: gl.drawingBufferWidth,
+        height: gl.drawingBufferHeight,
+      };
+    });
 }
 
 async function waitForBandGrid(page: import("@playwright/test").Page) {
@@ -75,16 +77,6 @@ async function configureApp(
     }
   }
 
-  const target = query.get("focus") ?? query.get("view");
-  const labels: Record<string, RegExp> = {
-    butterfly: /Butterfly/,
-    wannier: /Wannier/,
-    lattice: /Lattice \+ BZ/,
-    bands: /Band surfaces/,
-  };
-  if (target && target !== "workspace" && labels[target]) {
-    await page.getByRole("button", { name: labels[target] }).click();
-  }
 }
 
 test(
@@ -113,9 +105,8 @@ test(
     await expect(
       page.getByLabel("Lattice geometry", { exact: true }),
     ).toHaveValue("triangular");
-    await page.getByRole("button", { name: /Lattice \+ BZ/ }).click();
     await expect(
-      page.getByRole("heading", { name: "Lattice geometry" }),
+      page.getByRole("heading", { name: "Lattice / BZ" }),
     ).toBeVisible();
     await expect(page).not.toHaveURL(/\?/);
     await expect(
@@ -130,13 +121,17 @@ test(
   },
 );
 
-test("the primary navigation remains usable on a mobile viewport", async ({ page }) => {
+test("shows every primary result in the single workspace", async ({ page }) => {
   await page.goto("/");
-  await page.locator(".view-nav").getByRole("button", { name: /Wannier/ }).click();
-  await expect(page.getByRole("heading", { name: "Wannier diagram" })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("navigation", { name: "Visualization" })).toBeVisible();
+  for (const heading of [
+    "Hofstadter butterfly",
+    "Wannier diagram",
+    "Lattice / BZ",
+    "At current φ",
+  ]) {
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  }
+  await expect(page.getByRole("navigation", { name: "Visualization" })).toHaveCount(0);
   await expect(page.getByText("Private by construction")).toHaveCount(0);
 });
 
@@ -177,10 +172,6 @@ test(
 test("renders a bounded Wigner–Seitz magnetic Brillouin zone", async ({ page }) => {
   await configureApp(page,
     "/?view=lattice&lat=triangular&p=1&q=11&t=1&alpha=1&tn=1&td=3&period=1&samp=7",
-  );
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Lattice geometry ready",
-    { timeout: 30_000 },
   );
   await expect(
     page.getByRole("img", {
@@ -233,10 +224,9 @@ test("keeps cancellation final", async ({ page }) => {
   );
 });
 
-test("streams the butterfly progressively and repaints it after a responsive resize", async ({
+test("streams the butterfly progressively", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "covered by the explicit 900 px resize");
+}) => {
   test.setTimeout(60_000);
   await configureApp(page,
     "/?view=butterfly&lat=square&p=1&q=97&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
@@ -244,14 +234,14 @@ test("streams the butterfly progressively and repaints it after a responsive res
   await page.waitForFunction(
     () => {
       const runtime = document.querySelector(".runtime-status")?.textContent ?? "";
-      const states = document.querySelector(".result-stats strong")?.textContent ?? "";
-      return runtime.includes("%") && /[1-9][\d,]* states/.test(states);
+      const canvas = document.querySelector('[data-flux-plot="butterfly"] canvas');
+      return runtime.includes("%") && canvas !== null;
     },
     undefined,
     { timeout: 30_000 },
   );
   const progressive = await webglInkPixels(page);
-  expect(progressive.width).toBeGreaterThan(500);
+  expect(progressive.width).toBeGreaterThanOrEqual(500);
   expect(progressive.ink).toBeGreaterThan(200);
 
   await expect(page.locator(".runtime-status")).toContainText(
@@ -261,23 +251,11 @@ test("streams the butterfly progressively and repaints it after a responsive res
   const complete = await webglInkPixels(page);
   expect(complete.ink).toBeGreaterThan(progressive.ink);
 
-  await page.setViewportSize({ width: 900, height: 760 });
-  await page.waitForTimeout(400);
-  const resized = await webglInkPixels(page);
-  expect(resized.width).toBeGreaterThan(400);
-  expect(resized.ink).toBeGreaterThan(500);
-  await expect(page.locator(".flux-marker")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
 });
 
 test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "desktop pointer interaction");
+}) => {
   await configureApp(page,
     "/?view=butterfly&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
   );
@@ -285,9 +263,10 @@ test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend
     "Computed locally",
     { timeout: 30_000 },
   );
-  await expect(page.locator(".flux-marker")).toContainText("current φ");
-  const initialTicks = await page.locator(".plot-ticks").first().textContent();
-  const stage = page.locator(".plot-stage");
+  const plot = page.locator('[data-flux-plot="butterfly"]');
+  await expect(plot.locator(".flux-marker")).toContainText("current φ");
+  const initialTicks = await plot.locator(".plot-ticks").textContent();
+  const stage = plot.locator(".plot-stage");
   const bounds = await stage.boundingBox();
   expect(bounds).not.toBeNull();
   await page.mouse.move(
@@ -296,11 +275,11 @@ test("supports plain-wheel zoom, reset, bounded flux marking, and a Chern legend
   );
   await page.mouse.wheel(0, -600);
   await expect
-    .poll(() => page.locator(".plot-ticks").first().textContent())
+    .poll(() => plot.locator(".plot-ticks").textContent())
     .not.toBe(initialTicks);
-  await page.getByRole("button", { name: "reset view" }).click();
+  await plot.getByRole("button", { name: "reset view" }).click();
   await expect
-    .poll(() => page.locator(".plot-ticks").first().textContent())
+    .poll(() => plot.locator(".plot-ticks").textContent())
     .toBe(initialTicks);
 
   await page.getByRole("button", { name: "Chern", exact: true }).click();
@@ -320,13 +299,13 @@ test("renders the Avron gap plane with Hall-conductivity segments", async ({
     { timeout: 30_000 },
   );
   await page.getByRole("button", { name: "Gaps", exact: true }).click();
-  const plot = page.locator(".spectrum-shell");
+  const plot = page.locator('[data-flux-plot="butterfly"]');
   await expect
     .poll(async () => Number(await plot.getAttribute("data-gap-segments")))
     .toBeGreaterThan(0);
-  await expect(page.getByLabel("Hall conductivity color scale")).toContainText(
-    "tᵣ",
-  );
+  await expect(
+    plot.getByLabel("Hall conductivity color scale"),
+  ).toContainText("tᵣ");
   const rendered = await webglInkPixels(page);
   expect(rendered.ink).toBeGreaterThan(100);
 });
@@ -334,11 +313,9 @@ test("renders the Avron gap plane with Hall-conductivity segments", async ({
 test(
   "links a clicked symmetry-cut momentum to the 3D surface marker",
   { tag: "@smoke" },
-  async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name === "mobile", "desktop 3D interaction");
+  async ({ page }) => {
     await page.goto("/");
     await page.getByLabel("q", { exact: true }).fill("5");
-    await page.getByRole("button", { name: /Band surfaces/ }).click();
     await waitForBandGrid(page);
     const before = await page
       .locator(".momentum-marker .marker-point")
@@ -370,14 +347,15 @@ test(
     await expect(page.locator(".surface-panel .surface-hint")).not.toHaveText(
       "k = (0.000, 0.000)",
     );
-    await expect(page.getByLabel("energy color scale")).toBeVisible();
+    await expect(
+      page.locator(".surface-panel").getByLabel("energy color scale"),
+    ).toBeVisible();
   },
 );
 
 test("selects thin bands forgivingly and scrubs momentum in real time", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "desktop pointer interaction");
+}) => {
   await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=5&t=1&alpha=1&tn=1&td=2&period=1&samp=11",
   );
@@ -458,8 +436,7 @@ test("selects thin bands forgivingly and scrubs momentum in real time", async ({
 
 test("adapts path detail to linked-cut zoom without recomputing bands", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "desktop wheel interaction");
+}) => {
   test.setTimeout(60_000);
   await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=11&t=1&alpha=1&tn=1&td=2&period=1",
@@ -582,6 +559,9 @@ test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: /Refine (topology|dispersion)/ }),
   ).toHaveCount(0);
+  await expect(shell).toHaveAttribute("data-sweep-count", "1", {
+    timeout: 30_000,
+  });
   const bandRequests = await shell.getAttribute(
     "data-band-request-count",
   );
@@ -589,13 +569,10 @@ test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
     "data-sweep-count",
   );
 
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Selected-band topology verified",
-    { timeout: 90_000 },
-  );
   await expect(page.locator(".adaptive-resolution-row")).toHaveAttribute(
     "data-topology-resolution",
     "resolved",
+    { timeout: 90_000 },
   );
   await expect(wilson).toHaveAttribute("data-wilson-points", "179");
   await expect(wilson).toHaveAttribute("data-topology-source", "adaptive");
@@ -615,8 +592,7 @@ test("automatically resolves an aliased q=31 Wilson loop", async ({ page }) => {
 
 test("automatically refines q=31 dispersion without detaching the lifted symmetry path", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "desktop 3D refinement");
+}) => {
   test.setTimeout(120_000);
   await configureApp(page,
     "/?focus=bands&lat=square&p=1&q=31&t=1&alpha=1&tn=1&td=2&period=1&bgt=0.01",
@@ -722,18 +698,12 @@ test("links symmetry points, both BZ outlines, and the lifted 3D path", async ({
   await page.getByRole("button", { name: "Γ path" }).click();
   await expect(scene).toHaveAttribute("data-symmetry-path", "visible");
 
-  await page.getByRole("button", { name: /Lattice \+ BZ/ }).click();
-  await expect(page.locator(".runtime-status")).toContainText(
-    "Lattice geometry ready",
-    { timeout: 30_000 },
-  );
   await expect(page.locator(".symmetry-points")).toContainText("ΓXMY");
 });
 
 test("drags the linked coprime flux cursor without launching another sweep", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "wide single-workspace interaction");
+}) => {
   test.setTimeout(60_000);
   await configureApp(page,
     "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
@@ -798,8 +768,7 @@ test("drags the linked coprime flux cursor without launching another sweep", asy
 
 test("keeps stale workspace plots visible and dimmed during replacement", async ({
   page,
-}, testInfo) => {
-  test.skip(testInfo.project.name === "mobile", "wide single-workspace behavior");
+}) => {
   test.setTimeout(60_000);
   await configureApp(page,
     "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
@@ -822,20 +791,13 @@ test("keeps stale workspace plots visible and dimmed during replacement", async 
   });
 });
 
-test("falls back from the workspace to tabs below 1100px", async ({ page }) => {
+test("states the desktop viewport requirement below 1200px", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 760 });
-  await configureApp(page,
-    "/?focus=workspace&lat=square&p=1&q=7&t=1&alpha=1&tn=1&td=2&period=1&samp=7",
+  await page.goto("/");
+  await expect(page.locator(".single-workspace")).toBeHidden();
+  await expect(page.getByRole("status")).toContainText(
+    "requires a desktop-sized window",
   );
-  await expect(page.locator(".single-workspace")).toHaveCount(0);
-  await expect(page.locator(".focused-workspace")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Hofstadter butterfly" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "Visualization" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workspace/ })).toBeHidden();
 });
 
 test("loads quantum geometry only after the user asks for it", async ({

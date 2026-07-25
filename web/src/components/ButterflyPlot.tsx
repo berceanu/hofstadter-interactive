@@ -317,10 +317,8 @@ function buildSpatialIndex(data: PointData) {
 
 export function ButterflyPlot({
   wannier = false,
-  compact = false,
 }: {
   wannier?: boolean;
-  compact?: boolean;
 }) {
   const { butterfly, butterflyStale } = useResultCache();
   const colorMode = useAppStore((state) => state.colorMode);
@@ -551,7 +549,6 @@ export function ButterflyPlot({
       className={[
         "plot-shell",
         "spectrum-shell",
-        compact ? "compact" : "",
         butterflyStale ? "is-stale" : "",
       ].filter(Boolean).join(" ")}
       data-flux-plot={wannier ? "wannier" : "butterfly"}

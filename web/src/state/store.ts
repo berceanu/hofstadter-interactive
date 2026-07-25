@@ -5,12 +5,10 @@ import type {
   RuntimeProgress,
   ScientificParameters,
   SurfaceMetric,
-  FocusKind,
-  ViewKind,
 } from "../compute/contracts";
 
 export interface SelectedPoint {
-  source?: "butterfly" | "wannier" | "gap";
+  source: "butterfly" | "wannier" | "gap";
   flux: number;
   energy: number;
   band?: number;
@@ -30,9 +28,6 @@ export interface SelectedMomentum {
 
 interface AppState {
   parameters: ScientificParameters;
-  view: ViewKind;
-  focus: FocusKind;
-  workspaceWide: boolean;
   fluxTransform: { zoom: number; pan: number };
   computeCounters: {
     sweeps: number;
@@ -58,9 +53,6 @@ interface AppState {
   ) => void;
   setFlux: (p: number, q: number) => void;
   setLattice: (lattice: LatticeKind) => void;
-  setView: (view: ViewKind) => void;
-  setFocus: (focus: FocusKind) => void;
-  setWorkspaceWide: (wide: boolean) => void;
   setFluxTransform: (transform: { zoom: number; pan: number }) => void;
   incrementComputeCounter: (
     kind:
@@ -231,9 +223,6 @@ const latticeDefaults: Record<
 
 export const useAppStore = create<AppState>((set) => ({
   parameters: normalizeParameters(defaultParameters),
-  view: "butterfly",
-  focus: "workspace",
-  workspaceWide: false,
   fluxTransform: { zoom: 1, pan: 0 },
   computeCounters: {
     sweeps: 0,
@@ -281,15 +270,6 @@ export const useAppStore = create<AppState>((set) => ({
       }),
       selectedPoint: undefined,
     })),
-  setView: (view) =>
-    set({ view, focus: view, selectedPoint: undefined }),
-  setFocus: (focus) =>
-    set((state) => ({
-      focus,
-      view: focus === "workspace" ? state.view : focus,
-      selectedPoint: undefined,
-    })),
-  setWorkspaceWide: (workspaceWide) => set({ workspaceWide }),
   setFluxTransform: (fluxTransform) =>
     set({
       fluxTransform: normalizeFluxTransform(fluxTransform),

@@ -5,8 +5,7 @@ export type LatticeKind =
   | "kagome"
   | "bravais";
 
-export type ViewKind = "butterfly" | "wannier" | "lattice" | "bands";
-export type FocusKind = "workspace" | ViewKind;
+export type ResultKind = "butterfly" | "wannier" | "lattice" | "bands";
 export type ButterflyColorMode = "spectral" | "chern" | "gaps";
 export type SurfaceMetric = "energy" | "berry" | "gxx" | "gxy";
 

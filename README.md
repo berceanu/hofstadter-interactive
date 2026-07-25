@@ -4,6 +4,11 @@ A local-first interactive laboratory for Hofstadter butterflies, Wannier
 diagrams, real-space lattices, Brillouin zones, band surfaces, Berry flux, and
 Chern topology.
 
+The interface is one persistent three-column scientific workspace intended for
+desktop windows at least 1200 px wide. Butterfly, Wannier, lattice/BZ, and
+current-flux band results remain visible and linked without alternate tab or
+focus modes.
+
 The numerical core is the validated GPL-3.0
 [HofstadterTools](https://hofstadter.tools) implementation. Calculations run in
 one persistent Pyodide Web Worker; the frontend never calls Pyodide directly.
@@ -55,8 +60,8 @@ set:
 npm run check:smoke
 ```
 
-Reserve the complete native/Pyodide/desktop/mobile matrix for push, deploy, or
-release boundaries:
+Reserve the complete native/Pyodide/desktop browser matrix for push, deploy,
+or release boundaries:
 
 ```bash
 npm run check:release
