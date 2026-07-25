@@ -224,44 +224,26 @@ export function ParameterPanel() {
         </small>
       </div>
 
-      <div className="split-fields">
-        <div className="field compact">
-          <FieldLabel
-            htmlFor="parameter-alpha"
-            help={parameterHelp.anisotropy}
-          >
-            Anisotropy α
-          </FieldLabel>
-          <input
-            id="parameter-alpha"
-            type="number"
-            min="0.1"
-            max="4"
-            step="0.05"
-            value={parameters.alpha}
-            disabled={
-              parameters.lattice === "square"
-              || parameters.lattice === "triangular"
-            }
-            onChange={(event) => setParameter("alpha", Number(event.target.value))}
-          />
-        </div>
-        <div className="field compact">
-          <FieldLabel
-            htmlFor="parameter-period"
-            help={parameterHelp.period}
-          >
-            Period
-          </FieldLabel>
-          <input
-            id="parameter-period"
-            type="number"
-            min="1"
-            max="16"
-            value={parameters.period}
-            onChange={(event) => setParameter("period", Number(event.target.value))}
-          />
-        </div>
+      <div className="field">
+        <FieldLabel
+          htmlFor="parameter-alpha"
+          help={parameterHelp.anisotropy}
+        >
+          Anisotropy α
+        </FieldLabel>
+        <input
+          id="parameter-alpha"
+          type="number"
+          min="0.1"
+          max="4"
+          step="0.05"
+          value={parameters.alpha}
+          disabled={
+            parameters.lattice === "square"
+            || parameters.lattice === "triangular"
+          }
+          onChange={(event) => setParameter("alpha", Number(event.target.value))}
+        />
       </div>
 
       <div className="split-fields">

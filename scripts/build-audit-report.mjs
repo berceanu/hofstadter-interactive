@@ -372,7 +372,7 @@ const html = `<!doctype html>
     <div class="two-col">
       <div class="panel">
         <h3>Driven browser coverage</h3>
-        <p>Changed lattice, p/q, hopping, anisotropy, angle, period, and grouping controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; and cancelled q=97 work.</p>
+        <p>Changed lattice, p/q, hopping, anisotropy, angle, and grouping controls; switched all four views; inspected progressive batches; resized dense WebGL canvases; used plain-wheel zoom, bounded pan, reset, hover, band/momentum selection, and 3D orbit controls; and cancelled q=97 work.</p>
       </div>
       <div class="panel">
         <h3>Numerical coverage</h3>

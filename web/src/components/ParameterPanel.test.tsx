@@ -25,6 +25,7 @@ describe("ParameterPanel", () => {
     expect(
       screen.queryByLabelText("Momentum samples per axis"),
     ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Period")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Band-gap threshold bgt")).toBeInTheDocument();
     expect(
       screen.getByRole("button", {

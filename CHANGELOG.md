@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each session now starts from the canonical default state.
 - Remove the custom-basis lattice editor and its browser-only Python adapter
   override. Named lattices and the general Bravais model remain available.
+- Remove the magnetic-period control and force the canonical internal period
+  for each lattice preset.
 - Standardize topological coloring on the upstream-inspired Avron palette and
   remove palette selection state.
 

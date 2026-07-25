@@ -40,14 +40,29 @@ describe("scientific parameter invariants", () => {
     const normalized = normalizeParameters({
       ...defaultParameters,
       alpha: -4,
-      period: 0,
       samples: 32,
       theta: [180, 0],
     });
     expect(normalized.alpha).toBe(0.1);
-    expect(normalized.period).toBe(1);
     expect(normalized.samples).toBe(17);
     expect(normalized.theta).toEqual([1, 2]);
+  });
+
+  it("forces each lattice to its canonical magnetic period", () => {
+    expect(
+      normalizeParameters({
+        ...defaultParameters,
+        lattice: "square",
+        period: 8,
+      }).period,
+    ).toBe(1);
+    expect(
+      normalizeParameters({
+        ...defaultParameters,
+        lattice: "kagome",
+        period: 1,
+      }).period,
+    ).toBe(8);
   });
 
   it("forces named lattices to their canonical angle", () => {

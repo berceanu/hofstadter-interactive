@@ -158,6 +158,10 @@ export function canonicalTheta(
   ];
 }
 
+export function canonicalPeriod(lattice: LatticeKind) {
+  return lattice === "kagome" ? 8 : 1;
+}
+
 export function automaticMomentumSamples({
   lattice,
   q,
@@ -208,12 +212,7 @@ export function normalizeParameters(
       4,
     ),
     theta: canonicalTheta(candidate.lattice, candidate.theta),
-    period: boundedInteger(
-      candidate.period,
-      defaultParameters.period,
-      1,
-      16,
-    ),
+    period: canonicalPeriod(candidate.lattice),
     samples,
     bgt: boundedNumber(candidate.bgt, defaultParameters.bgt, 0, 10),
   };
@@ -221,13 +220,13 @@ export function normalizeParameters(
 
 const latticeDefaults: Record<
   LatticeKind,
-  Pick<ScientificParameters, "theta" | "period" | "alpha">
+  Pick<ScientificParameters, "theta" | "alpha">
 > = {
-  square: { theta: [1, 2], period: 1, alpha: 1 },
-  triangular: { theta: [1, 3], period: 1, alpha: 1 },
-  honeycomb: { theta: [1, 3], period: 1, alpha: 1 },
-  kagome: { theta: [1, 3], period: 8, alpha: 1 },
-  bravais: { theta: [67, 180], period: 1, alpha: 1 },
+  square: { theta: [1, 2], alpha: 1 },
+  triangular: { theta: [1, 3], alpha: 1 },
+  honeycomb: { theta: [1, 3], alpha: 1 },
+  kagome: { theta: [1, 3], alpha: 1 },
+  bravais: { theta: [67, 180], alpha: 1 },
 };
 
 export const useAppStore = create<AppState>((set) => ({

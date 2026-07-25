@@ -33,11 +33,6 @@ export const parameterHelp = {
     body:
       "α sets the length of a₂ relative to a₁: α = |a₂|/|a₁|. Named square and triangular lattices fix this ratio; Bravais and multi-site geometries may expose it.",
   },
-  period: {
-    label: "Magnetic periodicity",
-    body:
-      "This is HofstadterTools’ factor for dividing the unit-cell area used in the flux density. Keep 1 for the ordinary convention; lattice presets may choose another required magnetic period.",
-  },
   theta: {
     label: "Bravais angle θ",
     body:

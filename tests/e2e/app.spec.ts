@@ -62,7 +62,6 @@ async function configureApp(
   const fields = [
     ["t", "#parameter-hoppings"],
     ["alpha", "#parameter-alpha"],
-    ["period", "#parameter-period"],
     ["td", "#parameter-theta-denominator"],
     ["tn", "#parameter-theta-numerator"],
     ["bgt", "#parameter-band-gap-threshold"],
